@@ -1,0 +1,14 @@
+{
+  "name": "3d-game-kit",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A component-based Web 3D game framework (Three.js + Rapier + ECS) with playable demos.",
+  "workspaces": [
+    "packages/*",
+    "demos/*"
+  ],
+  "scripts": {
+    "military": "npm run dev -w @demo/military-tps",
+    "gta": "npm run dev -w @demo/gta-sandbox"
+  }
+}

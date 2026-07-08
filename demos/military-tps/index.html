@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>three-fps modern (Vite + Three + Rapier)</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+      canvas { display: block; }
+
+      #crosshair {
+        position: fixed; top: 50%; left: 50%; width: 20px; height: 20px;
+        transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
+        border: 2px solid rgba(255,255,255,0.85); border-radius: 50%;
+        box-shadow: 0 0 3px rgba(0,0,0,0.7); display: none;
+      }
+      #crosshair::after {
+        content: ''; position: absolute; top: 50%; left: 50%; width: 3px; height: 3px;
+        background: #fff; border-radius: 50%; transform: translate(-50%, -50%);
+        box-shadow: 0 0 2px rgba(0,0,0,0.8);
+      }
+
+      /* HUD */
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; display: none; }
+      #ammo {
+        position: absolute; right: 32px; bottom: 24px; color: #fff;
+        font-size: 40px; font-weight: 700; letter-spacing: 2px;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+      }
+      #ammo .reserve { font-size: 26px; opacity: 0.7; }
+      #health-wrap {
+        position: absolute; left: 32px; bottom: 34px; width: 240px; height: 16px;
+        background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px;
+      }
+      #health-bar { height: 100%; width: 100%; background: #e6e6e6; border-radius: 2px; transition: width 0.15s; }
+
+      /* Menu / loading */
+      #menu {
+        position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; background: #000; color: #fff;
+      }
+      #menu h1 { font-weight: 800; letter-spacing: 6px; font-size: 40px; margin-bottom: 8px; }
+      #menu .sub { opacity: 0.5; letter-spacing: 3px; margin-bottom: 40px; font-size: 13px; }
+      #start_game {
+        pointer-events: auto; padding: 14px 46px; font-size: 20px; font-weight: 700; letter-spacing: 2px;
+        background: #fff; color: #000; border: none; border-radius: 4px; cursor: pointer;
+      }
+      #start_game:hover { background: #ddd; }
+      #start_game[disabled] { opacity: 0.4; cursor: default; }
+      #progress-wrap { width: 320px; height: 6px; background: #222; margin-top: 26px; border-radius: 3px; overflow: hidden; }
+      #progress { height: 100%; width: 0%; background: #fff; transition: width 0.2s; }
+      #hint { margin-top: 18px; font-size: 12px; opacity: 0.4; letter-spacing: 1px; }
+    </style>
+  </head>
+  <body>
+    <div id="crosshair"></div>
+
+    <div id="hud">
+      <div id="health-wrap"><div id="health-bar"></div></div>
+      <div id="ammo"><span class="mag">30</span> <span class="reserve">/ 100</span></div>
+    </div>
+
+    <div id="menu">
+      <h1>OPERATION</h1>
+      <div class="sub">THREE.JS + RAPIER · THIRD-PERSON MILITARY</div>
+      <button id="start_game" disabled>LOADING…</button>
+      <div id="progress-wrap"><div id="progress"></div></div>
+      <div id="hint">WASD 移动 · 鼠标瞄准 · 左键射击 · R 换弹 · 空格跳 · <b>V 切换第一/第三人称</b></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
