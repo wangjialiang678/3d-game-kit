@@ -2,23 +2,42 @@
   "_comment": "场景内容包：关卡布局、出生点、资产引用。改这里=改关卡，刷新即生效，加载时自动校验。",
   "name": "downtown-sandbox",
   "version": 1,
-
   "town": {
     "_comment": "程序化小镇参数：建筑生成在 cell 间距的网格上（中心 0/±26/±52），马路即网格间的走廊（±13/±39）。",
     "groundHalf": 78,
     "cell": 26,
     "gridRange": 2,
-    "plaza": [[0, 0]],
+    "plaza": [
+      [
+        0,
+        0
+      ]
+    ],
     "seed": 1337,
-    "buildingWidth": [11, 17],
-    "buildingHeight": [6, 23]
+    "buildingWidth": [
+      11,
+      17
+    ],
+    "buildingHeight": [
+      6,
+      23
+    ]
   },
-
   "spawns": {
-    "player": [13, 1.2, 13],
-    "car": { "pos": [13, 0, 5], "headingDeg": 180 }
+    "player": [
+      13,
+      1.2,
+      13
+    ],
+    "car": {
+      "pos": [
+        13,
+        0,
+        5
+      ],
+      "headingDeg": 180
+    }
   },
-
   "assets": {
     "soldier": "/assets/characters/Soldier.glb",
     "sky": "/assets/sky/kloofendal_48d_partly_cloudy_puresky.hdr"

@@ -13,7 +13,8 @@ import WantedSystem from './entities/WantedSystem';
 import MissionSystem from './entities/MissionSystem';
 import { cloneSoldier, buildCar } from './util/build';
 import { loadContent, type Content } from './content/ContentLoader';
-import { validateContent, type Issue } from './content/validate';
+import { validateContent } from '../content-lib/core.mjs';
+import type { Issue } from '../content-lib/core';
 
 class Game {
   private renderer!: THREE.WebGLRenderer;
