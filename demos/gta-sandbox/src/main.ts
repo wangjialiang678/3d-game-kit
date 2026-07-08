@@ -129,7 +129,7 @@ class Game {
 
     // mission chain (walk → drive → wanted-and-escape)
     const missions = new Entity(); missions.SetName('Missions');
-    missions.AddComponent(new MissionSystem(this.scene));
+    missions.AddComponent(new MissionSystem(this.scene, this.camera));
     this.em.Add(missions);
 
     this.em.EndSetup();

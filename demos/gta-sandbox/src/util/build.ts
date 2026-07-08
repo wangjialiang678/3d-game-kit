@@ -47,12 +47,12 @@ export function buildCar(color: THREE.ColorRepresentation = 0x2f6fb0): THREE.Gro
   return car;
 }
 
-/** 任务/目标点的发光圆柱标记。 */
+/** 任务/目标点的发光光柱（50m 高，比所有建筑都高，任何角度都能看到）。 */
 export function buildMarker(color: THREE.ColorRepresentation = 0xffcc22): THREE.Mesh {
   const m = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.6, 1.6, 6, 24, 1, true),
+    new THREE.CylinderGeometry(1.8, 1.8, 50, 24, 1, true),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })
   );
-  m.position.y = 3;
+  m.position.y = 25;
   return m;
 }

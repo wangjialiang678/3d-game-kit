@@ -62,7 +62,21 @@ export default class Car extends Component {
   private exit() {
     this.active = false;
     this.updateVectors();
-    const exitPos = this.tmp.copy(this.ground).addScaledVector(this.right, 2.2).setY(this.ground.y);
+    // 安全落点：依次尝试 右/左/后/前 四个方向，用射线确认没有墙/建筑挡着，
+    // 否则玩家会被放进建筑碰撞体里、卡住动不了（曾是真实 bug）。
+    const candidates = [
+      this.right.clone().multiplyScalar(2.4),
+      this.right.clone().multiplyScalar(-2.4),
+      this.fwd.clone().multiplyScalar(-3.4),
+      this.fwd.clone().multiplyScalar(3.4),
+    ];
+    const origin = new THREE.Vector3(this.ground.x, this.ground.y + 1.0, this.ground.z);
+    let exitPos: THREE.Vector3 | null = null;
+    for (const off of candidates) {
+      const hit = this.physics.raycast(origin, off.clone().normalize(), off.length() + 0.5, this.collider);
+      if (!hit) { exitPos = new THREE.Vector3(this.ground.x + off.x, 0, this.ground.z + off.z); break; }
+    }
+    if (!exitPos) exitPos = new THREE.Vector3(this.ground.x, 0, this.ground.z); // 全堵死就原地（车顶）
     this.onfoot?.activate(exitPos);
   }
 

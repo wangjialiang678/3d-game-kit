@@ -93,11 +93,13 @@ export default class OnFootPlayer extends Component {
     if (d < 5.0) { this.deactivate(); car.enterAsDriver(this); }
   }
 
-  /** 被 Car 调用：下车后在指定位置复活步行控制。 */
+  /** 被 Car 调用：下车后在指定位置复活步行控制。
+   *  高度必须给到胶囊体站立中心（FOOT），否则半截插进地面，角色控制器会被卡死。 */
   activate(pos: THREE.Vector3) {
     this.active = true;
     this.soldier.model.visible = true;
-    this.character.body.setNextKinematicTranslation({ x: pos.x, y: pos.y + 0.2, z: pos.z });
+    this.character.body.setNextKinematicTranslation({ x: pos.x, y: pos.y + FOOT + 0.05, z: pos.z });
+    this.soldier.model.position.set(pos.x, pos.y, pos.z);
     this.speed.set(0, 0, 0); this.vVel = 0;
   }
   private deactivate() { this.active = false; this.soldier.model.visible = false; }
