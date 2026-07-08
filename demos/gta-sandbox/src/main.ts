@@ -26,6 +26,8 @@ class Game {
   private assets: Record<string, any> = {};
   private running = false;
   public content!: Content;
+  public blockMeshes: THREE.Mesh[] = [];   // 编辑器用：与 content.blocks 按下标对齐
+  private editorOpen = false;
 
   async init() {
     await initPhysics();
@@ -126,6 +128,7 @@ class Game {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), this.assets['matWall']);
       mesh.position.set(b.x, b.h / 2, b.z); mesh.castShadow = true; mesh.receiveShadow = true;
       this.scene.add(mesh);
+      this.blockMeshes.push(mesh);   // 与 content.blocks 下标对齐，供编辑器点选
       this.physics.addStaticBox(new THREE.Vector3(b.x, b.h / 2, b.z), new THREE.Vector3(b.w / 2, b.h / 2, b.d / 2));
     }
   }
@@ -165,6 +168,16 @@ class Game {
     this.em.EndSetup();
     this.scene.add(this.camera);
     try { document.body.requestPointerLock(); } catch { /* headless/autotest 下没有指针锁 */ }
+
+    // P4：按 E 进入可视化编辑器（懒加载；输入框聚焦时不触发）
+    document.addEventListener('keydown', async (e) => {
+      if (e.code !== 'KeyE' || this.editorOpen) return;
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      this.editorOpen = true;
+      const { default: Editor } = await import('./editor/Editor');
+      new Editor(this).enter();
+    });
     this.running = true; this.clock.start();
     this.renderer.setAnimationLoop(this.loop);
   }

@@ -11,6 +11,8 @@ export interface SceneContent {
   name: string;
   version: number;
   town: TownParams;
+  /** 可选：显式建筑列表（编辑器保存后写入；存在时优先于 town 种子生成） */
+  blocks?: Block[];
   spawns: {
     player: [number, number, number];
     car: { pos: [number, number, number]; headingDeg: number };
@@ -38,5 +40,7 @@ export async function loadContent(sceneUrl: string, missionsUrl: string): Promis
   if (!missionsRes.ok) throw new Error(`无法加载 ${missionsUrl}: HTTP ${missionsRes.status}`);
   const scene = (await sceneRes.json()) as SceneContent;
   const missionsPack = (await missionsRes.json()) as { missions: MissionData[] };
-  return { scene, missions: missionsPack.missions ?? [], blocks: materializeBlocks(scene.town) };
+  // 显式 blocks 优先（编辑器产物）；否则由 town 种子物化
+  const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
+  return { scene, missions: missionsPack.missions ?? [], blocks };
 }

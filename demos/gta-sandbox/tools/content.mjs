@@ -25,11 +25,13 @@ const MISSIONS = join(ROOT, 'public/content/missions.json');
 const load = () => {
   const scene = JSON.parse(readFileSync(SCENE, 'utf8'));
   const missionsPack = JSON.parse(readFileSync(MISSIONS, 'utf8'));
-  return { scene, missionsPack, content: { scene, missions: missionsPack.missions, blocks: materializeBlocks(scene.town) } };
+  const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);  // 显式 blocks（编辑器产物）优先
+  return { scene, missionsPack, content: { scene, missions: missionsPack.missions, blocks } };
 };
 
 const save = (scene, missionsPack, force) => {
-  const content = { scene, missions: missionsPack.missions, blocks: materializeBlocks(scene.town) };
+  const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
+  const content = { scene, missions: missionsPack.missions, blocks };
   const issues = validateContent(content);
   if (issues.length && !force) {
     console.error(`⛔ 校验失败（${issues.length} 处），已拒绝保存：`);
