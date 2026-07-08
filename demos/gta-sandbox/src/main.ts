@@ -12,9 +12,8 @@ import Car from './entities/Car';
 import WantedSystem from './entities/WantedSystem';
 import MissionSystem from './entities/MissionSystem';
 import { cloneSoldier, buildCar } from './util/build';
-
-const TOWN = 78;   // ground half-size
-const CELL = 26;   // city block spacing
+import { loadContent, type Content } from './content/ContentLoader';
+import { validateContent, type Issue } from './content/validate';
 
 class Game {
   private renderer!: THREE.WebGLRenderer;
@@ -25,14 +24,38 @@ class Game {
   private clock = new THREE.Clock();
   private assets: Record<string, any> = {};
   private running = false;
+  public content!: Content;
 
   async init() {
     await initPhysics();
     this.setupGraphics();
+
+    // ---- P1：加载内容包并校验（校验不过就不开局，红字报错） ----
+    try {
+      this.content = await loadContent('/content/scene.json', '/content/missions.json');
+    } catch (e) {
+      this.showContentErrors([{ where: 'content', message: String(e) }]);
+      return;
+    }
+    const issues = validateContent(this.content);
+    if (issues.length) { this.showContentErrors(issues); return; }
+
     await this.loadAssets();
     const btn = document.getElementById('play') as HTMLButtonElement;
     btn.textContent = 'PLAY'; btn.disabled = false;
     btn.addEventListener('click', () => this.start());
+  }
+
+  showContentErrors(issues: Issue[]) {
+    const el = document.getElementById('content-errors') as HTMLElement;
+    el.style.display = 'block';
+    el.innerHTML =
+      `<div class="ce-title">⛔ 内容包校验失败（${issues.length} 处）—— 修复 public/content/*.json 后刷新</div>` +
+      issues.map((i) => `<div class="ce-item"><b>${i.where}</b>：${i.message}</div>`).join('');
+    const btn = document.getElementById('play') as HTMLButtonElement;
+    btn.textContent = '内容包校验失败';
+    btn.disabled = true;
+    console.error('[content] validation failed:', issues);
   }
 
   setupGraphics() {
@@ -72,8 +95,8 @@ class Game {
     const bar = document.getElementById('progress')!;
     const jobs: Promise<void>[] = [];
     const add = (p: Promise<any>, n: string) => jobs.push(p.then(r => { this.assets[n] = r; }));
-    add(gltf.loadAsync('/assets/characters/Soldier.glb'), 'soldier');
-    add(rgbe.loadAsync('/assets/sky/kloofendal_48d_partly_cloudy_puresky.hdr'), 'sky');
+    add(gltf.loadAsync(this.content.scene.assets.soldier), 'soldier');   // 资产路径来自内容包
+    add(rgbe.loadAsync(this.content.scene.assets.sky), 'sky');
     let done = 0; jobs.forEach(j => j.then(() => { done++; bar.style.width = `${done / jobs.length * 100}%`; }));
     await Promise.all(jobs);
     const sky = this.assets['sky'] as THREE.Texture;
@@ -85,22 +108,17 @@ class Game {
   }
 
   buildTown() {
-    // ground
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(TOWN * 2, 1, TOWN * 2), this.assets['matGround']);
+    // 全部来自内容包：地面尺寸 + 物化后的建筑列表（P1：引擎只负责"照数据施工"）
+    const half = this.content.scene.town.groundHalf;
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), this.assets['matGround']);
     ground.position.y = -0.5; ground.receiveShadow = true; this.scene.add(ground);
-    this.physics.addStaticBox(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(TOWN, 0.5, TOWN));
-    // city blocks on a grid; roads are the gaps at x,z = ±13, ±39 ...
-    const rand = mulberry32(1337);
-    for (let gx = -2; gx <= 2; gx++) {
-      for (let gz = -2; gz <= 2; gz++) {
-        if (gx === 0 && gz === 0) continue;            // central plaza
-        const cx = gx * CELL, cz = gz * CELL;
-        const w = 11 + rand() * 6, d = 11 + rand() * 6, h = 6 + rand() * 17;
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), this.assets['matWall']);
-        mesh.position.set(cx, h / 2, cz); mesh.castShadow = true; mesh.receiveShadow = true;
-        this.scene.add(mesh);
-        this.physics.addStaticBox(new THREE.Vector3(cx, h / 2, cz), new THREE.Vector3(w / 2, h / 2, d / 2));
-      }
+    this.physics.addStaticBox(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(half, 0.5, half));
+
+    for (const b of this.content.blocks) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), this.assets['matWall']);
+      mesh.position.set(b.x, b.h / 2, b.z); mesh.castShadow = true; mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      this.physics.addStaticBox(new THREE.Vector3(b.x, b.h / 2, b.z), new THREE.Vector3(b.w / 2, b.h / 2, b.d / 2));
     }
   }
 
@@ -111,15 +129,19 @@ class Game {
     this.em = new EntityManager();
     this.buildTown();
 
-    // player on foot
+    // player on foot（出生点来自内容包）
+    const sp = this.content.scene.spawns;
     const player = new Entity(); player.SetName('Player');
     player.AddComponent(new OnFootPlayer(this.camera, this.physics, this.scene, cloneSoldier(this.assets['soldier'])));
-    player.SetPosition(new THREE.Vector3(13, 1.2, 13));
+    player.SetPosition(new THREE.Vector3(...sp.player));
     this.em.Add(player);
 
-    // a drivable car parked on the road
+    // a drivable car parked on the road（位置/朝向来自内容包）
     const car = new Entity(); car.SetName('Car');
-    car.AddComponent(new Car(this.camera, this.physics, this.scene, buildCar(0x2f6fb0), new THREE.Vector3(13, 0, 5), Math.PI));
+    car.AddComponent(new Car(
+      this.camera, this.physics, this.scene, buildCar(0x2f6fb0),
+      new THREE.Vector3(...sp.car.pos), (sp.car.headingDeg * Math.PI) / 180,
+    ));
     this.em.Add(car);
 
     // wanted system (G to raise heat, police chase, escape to cool down)
@@ -129,7 +151,7 @@ class Game {
 
     // mission chain (walk → drive → wanted-and-escape)
     const missions = new Entity(); missions.SetName('Missions');
-    missions.AddComponent(new MissionSystem(this.scene, this.camera));
+    missions.AddComponent(new MissionSystem(this.scene, this.camera, this.content.missions));
     this.em.Add(missions);
 
     this.em.EndSetup();
@@ -162,16 +184,6 @@ class Game {
     this.em.Update(dt);
     this.updatePrompt();
     this.renderer.render(this.scene, this.camera);
-  };
-}
-
-// small deterministic PRNG so the town layout is stable
-function mulberry32(a: number) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 

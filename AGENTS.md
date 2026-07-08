@@ -24,7 +24,8 @@ npm run gta            # → http://127.0.0.1:5177/
 | 引擎能力（新碰撞体类型、通用系统） | `packages/engine/src/`，并在 `index.ts` 导出 |
 | 某个 demo 的玩法/数值/AI | 该 demo 的 `src/entities/*` 顶部常量与状态机 |
 | 换美术（模型/贴图/天空） | 该 demo 的 `public/assets/` + `main.ts` `loadAssets()` 路径 |
-| 关卡布局/实体摆放 | 该 demo 的 `main.ts`（`buildArena`/`buildTown` + `startGame` 的数组） |
+| 关卡/任务/出生点（gta-sandbox） | **`public/content/*.json` 内容包**（改完刷新即生效；加载时自动校验，任务点写进建筑会红字报错并拒绝开局） |
+| 关卡布局（military-tps，尚未数据化） | `main.ts` 的 `buildArena` + `startGame` 数组 |
 | 加全新机制 | 新建组件文件，`main.ts` 装到实体上——**不改现有文件** |
 | 新建一个游戏 | 复制一个 demo 目录，改 `package.json` name + vite 端口，根 scripts 加命令 |
 

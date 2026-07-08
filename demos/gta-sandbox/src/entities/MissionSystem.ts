@@ -13,14 +13,7 @@ interface Mission {
   needCar?: boolean;        // 必须开着车到
   special?: 'wanted';       // 特殊：通缉≥2星后甩到 0
 }
-
-// ⚠️ 任务点必须落在马路上（建筑中心在 0,±26,±52 的网格上；路口在 ±13,±39）。
-//    曾有 bug：任务点写在建筑格中心，光柱生成在楼里，玩家永远找不到。
-const MISSIONS: Mission[] = [
-  { text: '① 跟着屏幕上方的导航箭头，步行到路口的黄色光柱', pos: [-13, 13] },
-  { text: '② 上车(F)，开车去西北方向的光柱路口', pos: [-39, -39], needCar: true },
-  { text: '③ 按 G 惹麻烦(≥2星)，再甩掉警察(归零)', special: 'wanted' },
-];
+// P1：任务不再硬编码，由内容包 public/content/missions.json 提供（加载时已做"任务点不在建筑里"校验）。
 
 export default class MissionSystem extends Component {
   private scene: THREE.Scene;
@@ -32,12 +25,14 @@ export default class MissionSystem extends Component {
   private navEl = document.querySelector('#mission .nav') as HTMLElement;
   private time = 0;
   private camDir = new THREE.Vector3();
+  private missions: Mission[];
 
-  constructor(scene: THREE.Scene, camera: THREE.Camera) {
+  constructor(scene: THREE.Scene, camera: THREE.Camera, missions: Mission[]) {
     super();
     this.name = 'MissionSystem';
     this.scene = scene;
     this.camera = camera;
+    this.missions = missions;
   }
 
   Initialize(): void {
@@ -45,7 +40,7 @@ export default class MissionSystem extends Component {
     this.applyMission();
   }
 
-  private cur(): Mission | undefined { return MISSIONS[this.idx]; }
+  private cur(): Mission | undefined { return this.missions[this.idx]; }
 
   private applyMission() {
     const m = this.cur();

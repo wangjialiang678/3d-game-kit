@@ -35,6 +35,14 @@
       #progress-wrap { width: 320px; height: 6px; background: #222; margin-top: 24px; border-radius: 3px; overflow: hidden; }
       #progress { height: 100%; width: 0%; background: #ffd23f; transition: width .2s; }
       #hint { margin-top: 18px; font-size: 12px; opacity: .45; letter-spacing: 1px; line-height: 1.8; text-align: center; }
+
+      /* 内容包校验失败遮罩（P1） */
+      #content-errors { display: none; position: fixed; left: 50%; top: 12%; transform: translateX(-50%);
+        z-index: 30; width: min(760px, 92vw); background: #2a0d0d; border: 1px solid #ff5a5a; border-radius: 8px;
+        padding: 18px 22px; color: #ffd9d9; font-size: 14px; line-height: 1.7; }
+      #content-errors .ce-title { color: #ff6b6b; font-weight: 800; font-size: 16px; margin-bottom: 10px; }
+      #content-errors .ce-item { margin: 4px 0; }
+      #content-errors .ce-item b { color: #ffb3b3; }
     </style>
   </head>
   <body>
@@ -46,6 +54,8 @@
       <div id="speed">0 <small>km/h</small></div>
       <div id="toast"></div>
     </div>
+
+    <div id="content-errors"></div>
 
     <div id="menu">
       <h1>CITY SANDBOX</h1>
