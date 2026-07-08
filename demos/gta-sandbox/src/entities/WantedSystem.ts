@@ -14,6 +14,7 @@ const PER_STAR = 2;          // 每星警察数
 const ESCAPE_DIST = 45;      // 甩脱距离
 const ESCAPE_TIME = 5;       // 保持秒数降一星
 const BUST_DIST = 1.8;       // 步行被捕距离
+const CULL_DIST = 65;        // 被甩开超过此距离的警察"跟丢"消散（GTA 式；否则小地图上永不放弃的警察让甩脱几乎无解）
 
 export default class WantedSystem extends Component {
   private scene: THREE.Scene;
@@ -71,11 +72,12 @@ export default class WantedSystem extends Component {
     return this.FindEntity('Player')!.Position as THREE.Vector3;
   }
 
-  /** 让在场警察数量 = 星级×2。 */
-  private syncPolice() {
+  /** 让在场警察数量向 星级×2 对齐。
+   *  allowSpawn=false（降星时）只裁减不补充——降星还在玩家身边刷新警察会让"甩脱"自相矛盾。 */
+  private syncPolice(allowSpawn = true) {
     const want = this.level * PER_STAR;
     const p = this.playerGroundPos();
-    while (this.police.length < want) {
+    while (allowSpawn && this.police.length < want) {
       const ang = Math.random() * Math.PI * 2;
       const spawn = new THREE.Vector3(p.x + Math.cos(ang) * 30, 0, p.z + Math.sin(ang) * 30);
       spawn.x = Math.max(-70, Math.min(70, spawn.x));
@@ -112,6 +114,15 @@ export default class WantedSystem extends Component {
     if (this.level === 0) return;
 
     const p = this.playerGroundPos();
+    // 跟丢消散：被甩开 >CULL_DIST 的警察退出追捕（从场景与实体表移除）
+    for (let i = this.police.length - 1; i >= 0; i--) {
+      const cop = this.police[i].GetComponent('PoliceNPC');
+      if (cop.Position.distanceTo(p) > CULL_DIST) {
+        cop.dispose();
+        this.em().Remove(this.police[i]);
+        this.police.splice(i, 1);
+      }
+    }
     let nearest = Infinity;
     for (const e of this.police) {
       const d = e.GetComponent('PoliceNPC').Position.distanceTo(p);
@@ -129,7 +140,7 @@ export default class WantedSystem extends Component {
         this.escapeTimer = 0;
         this.level--;
         this.renderStars();
-        this.syncPolice();
+        this.syncPolice(false);   // 降星只裁减，绝不在玩家身边补刷警察
         this.toast(this.level === 0 ? '✅ 甩掉警察了！通缉解除' : `通缉降为 ${this.level} 星`);
       }
     } else {

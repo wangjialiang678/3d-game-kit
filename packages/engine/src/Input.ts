@@ -34,6 +34,16 @@ class InputManager {
     return this.keys[code] ? 1 : 0;
   }
 
+  /** 编程式按键（测试机器人/录像回放用）——走与真实键盘完全相同的路径。 */
+  Press(code: string): void {
+    this.keys[code] = true;
+    const e = { code, repeat: false } as KeyboardEvent;
+    this.keyDown.forEach((h) => h(e));
+  }
+  Release(code: string): void {
+    this.keys[code] = false;
+  }
+
   AddMouseMoveListner(h: Handler) { this.mouseMove.push(h); }
   AddMouseDownListner(h: Handler) { this.mouseDown.push(h); }
   AddMouseUpListner(h: Handler) { this.mouseUp.push(h); }

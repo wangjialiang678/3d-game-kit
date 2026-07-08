@@ -45,6 +45,13 @@ class Game {
     const btn = document.getElementById('play') as HTMLButtonElement;
     btn.textContent = 'PLAY'; btn.disabled = false;
     btn.addEventListener('click', () => this.start());
+
+    // P3：?autotest → 试玩机器人自动开局并打穿全部任务（验证闭环）
+    if (new URLSearchParams(location.search).has('autotest')) {
+      this.start();
+      const { default: AutoTest } = await import('./test/AutoTest');
+      new AutoTest(this).run();
+    }
   }
 
   showContentErrors(issues: Issue[]) {
@@ -157,7 +164,7 @@ class Game {
 
     this.em.EndSetup();
     this.scene.add(this.camera);
-    document.body.requestPointerLock();
+    try { document.body.requestPointerLock(); } catch { /* headless/autotest 下没有指针锁 */ }
     this.running = true; this.clock.start();
     this.renderer.setAnimationLoop(this.loop);
   }
@@ -178,11 +185,23 @@ class Game {
     } else this.speedEl.style.display = 'none';
   }
 
+  // 固定步长累加器：低帧率（无头/慢机器）时每帧补跑多个逻辑子步，
+  // 保证"游戏时间 = 真实时间"——游戏速度不随帧率变慢（帧率无关性）。
+  private acc = 0;
+  private static readonly STEP = 1 / 60;
+  private static readonly MAX_SUBSTEPS = 12;   // ≥5fps 时仍能 1:1 实时
+
   loop = () => {
     if (!this.running) return;
-    const dt = Math.min(1 / 30, this.clock.getDelta());
-    this.physics.step();
-    this.em.Update(dt);
+    this.acc += Math.min(0.25, this.clock.getDelta());
+    let n = 0;
+    while (this.acc >= Game.STEP && n < Game.MAX_SUBSTEPS) {
+      this.physics.step();
+      this.em.Update(Game.STEP);
+      this.acc -= Game.STEP;
+      n++;
+    }
+    if (n === Game.MAX_SUBSTEPS) this.acc = 0;   // 极端卡顿时丢弃积压，避免螺旋死亡
     this.updatePrompt();
     this.renderer.render(this.scene, this.camera);
   };

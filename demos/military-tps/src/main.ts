@@ -192,11 +192,22 @@ class Game {
     this.renderer.setAnimationLoop(this.loop);
   }
 
+  // 固定步长累加器：帧率无关性——低帧率时每帧补跑逻辑子步，游戏时间=真实时间
+  private acc = 0;
+  private static readonly STEP = 1 / 60;
+  private static readonly MAX_SUBSTEPS = 12;
+
   loop = () => {
     if (!this.running) return;
-    const dt = Math.min(1 / 30, this.clock.getDelta());
-    this.physics.step();
-    this.entityManager.Update(dt);
+    this.acc += Math.min(0.25, this.clock.getDelta());
+    let n = 0;
+    while (this.acc >= Game.STEP && n < Game.MAX_SUBSTEPS) {
+      this.physics.step();
+      this.entityManager.Update(Game.STEP);
+      this.acc -= Game.STEP;
+      n++;
+    }
+    if (n === Game.MAX_SUBSTEPS) this.acc = 0;
     this.renderer.render(this.scene, this.camera);
   };
 }
