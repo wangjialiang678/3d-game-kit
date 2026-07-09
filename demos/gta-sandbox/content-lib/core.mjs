@@ -155,6 +155,18 @@ function validatePrefabs(c, issues, inBounds) {
     }
   }
 
+  // 城市楼型盘：所有风格键都必须在资产表里登记（视觉层数据同样过 L0）
+  const styles = scene.town?.buildingStyles;
+  if (styles) {
+    for (const kind of ['tall', 'mid']) {
+      for (const key of styles[kind] ?? []) {
+        if (!scene.assets?.[key]) {
+          issues.push({ where: `scene.town.buildingStyles.${kind}`, message: `楼型 "${key}" 未在 scene.assets 里登记` });
+        }
+      }
+    }
+  }
+
   const seenNames = new Set();
   entities.forEach((e, i) => {
     const tag = `scene.entities[${i}]`;

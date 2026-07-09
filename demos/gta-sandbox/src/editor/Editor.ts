@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { execute, validateAll } from '../../content-lib/commands.mjs';
+import { hasCityAssets, makeBlockVisual } from '../view/CityView';
 
 type Sel =
   | { type: 'block'; index: number; mesh: THREE.Mesh }
@@ -128,6 +129,11 @@ export default class Editor {
 
   // ---------- scene markers ----------
   private makeBlockMesh(b: any, index: number): THREE.Mesh {
+    // 城市视觉层可用时与游戏共用同一构建函数（隐形热区盒+楼模型子节点）
+    const town = this.g.content.scene.town;
+    if (hasCityAssets(this.g.assets, town?.buildingStyles)) {
+      return makeBlockVisual(b, index, this.g.assets, town.buildingStyles, town.seed ?? 0);
+    }
     const base = this.g.assets['matWall'];
     const mat = base?.clone ? base.clone() : new THREE.MeshStandardMaterial({ color: 0x777777 });
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat);

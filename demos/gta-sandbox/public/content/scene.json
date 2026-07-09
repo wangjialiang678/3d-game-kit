@@ -21,7 +21,27 @@
     "buildingHeight": [
       6,
       23
-    ]
+    ],
+    "roadWidth": 9,
+    "buildingStyles": {
+      "tallMin": 13,
+      "tall": [
+        "tower-a",
+        "tower-b",
+        "tower-c",
+        "tower-d",
+        "tower-e"
+      ],
+      "mid": [
+        "bld-a",
+        "bld-b",
+        "bld-c",
+        "bld-d",
+        "bld-e",
+        "bld-f",
+        "bld-g"
+      ]
+    }
   },
   "spawns": {
     "player": [
@@ -46,9 +66,9 @@
     },
     "car": {
       "controller": "Car",
-      "model": "truck",
+      "model": "car-sports",
       "length": 4.2,
-      "modelYawDeg": 0
+      "modelYawDeg": 180
     },
     "police": {
       "controller": "PoliceNPC",
@@ -76,6 +96,11 @@
       "model": "robot",
       "clip": "Dance",
       "scale": 0.35
+    },
+    "parked-car": {
+      "controller": "Prop",
+      "model": "car-taxi",
+      "scale": 1.6
     }
   },
   "entities": [
@@ -128,6 +153,26 @@
         6,
         6
       ]
+    },
+    {
+      "prefab": "parked-car",
+      "name": "ParkedTaxi",
+      "at": [
+        5,
+        -6
+      ],
+      "model": "car-taxi",
+      "modelYawDeg": 90
+    },
+    {
+      "prefab": "parked-car",
+      "name": "ParkedPolice",
+      "at": [
+        5,
+        -1.5
+      ],
+      "model": "car-police",
+      "modelYawDeg": 15
     }
   ],
   "assets": {
@@ -137,7 +182,25 @@
     "robot": "/assets/characters/RobotExpressive.glb",
     "truck": "/assets/vehicles/vehicle-truck-red.glb",
     "fountain": "/assets/props/pavement-fountain.glb",
-    "trees": "/assets/props/grass-trees-tall.glb"
+    "trees": "/assets/props/grass-trees-tall.glb",
+    "bld-a": "/assets/city/building-a.glb",
+    "bld-b": "/assets/city/building-b.glb",
+    "bld-c": "/assets/city/building-c.glb",
+    "bld-d": "/assets/city/building-d.glb",
+    "bld-e": "/assets/city/building-e.glb",
+    "bld-f": "/assets/city/building-f.glb",
+    "bld-g": "/assets/city/building-g.glb",
+    "tower-a": "/assets/city/building-skyscraper-a.glb",
+    "tower-b": "/assets/city/building-skyscraper-b.glb",
+    "tower-c": "/assets/city/building-skyscraper-c.glb",
+    "tower-d": "/assets/city/building-skyscraper-d.glb",
+    "tower-e": "/assets/city/building-skyscraper-e.glb",
+    "road-straight": "/assets/roads/road-straight.glb",
+    "road-crossroad": "/assets/roads/road-crossroad.glb",
+    "plaza-tile": "/assets/props/pavement.glb",
+    "car-sports": "/assets/vehicles/car-kit/sedan-sports.glb",
+    "car-taxi": "/assets/vehicles/car-kit/taxi.glb",
+    "car-police": "/assets/vehicles/car-kit/police.glb"
   },
   "blocks": [
     {

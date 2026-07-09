@@ -8,6 +8,7 @@ import HudView from '../view/HudView';
 import PrefabRegistry from './PrefabRegistry';
 import type { Content } from '../content/ContentLoader';
 import type { SoldierInstance } from '../util/build';
+import { hasCityAssets, makeBlockVisual, buildRoads, buildPlaza } from '../view/CityView';
 
 export interface AssembleOptions {
   content: Content;
@@ -66,20 +67,31 @@ export function buildTown(options: {
   const blockMeshes = options.blockMeshes ?? [];
   blockMeshes.length = 0;
 
-  const half = content.scene.town.groundHalf;
+  const town = content.scene.town as any;
+  const useCity = hasCityAssets(assets, town.buildingStyles);
+
+  const half = town.groundHalf;
   const groundMaterial = assets['matGround'];
-  if (groundMaterial) {
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), makeMeshMaterial(groundMaterial, 0x444444));
+  if (groundMaterial || useCity) {
+    // 城市模式：纯色浅灰地面（条纹混凝土贴图与 Kenney 低多边形风格不搭）
+    const mat = useCity
+      ? new THREE.MeshStandardMaterial({ color: 0xb7bdc3, roughness: 0.95 })
+      : makeMeshMaterial(groundMaterial, 0x444444);
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), mat);
     ground.position.y = -0.5;
     ground.receiveShadow = true;
     scene.add(ground);
   }
   physics.addStaticBox(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(half, 0.5, half));
 
-  for (const b of content.blocks) {
-    const wallMaterial = assets['matWall'];
-    if (wallMaterial) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), makeMeshMaterial(wallMaterial, 0x777777));
+  content.blocks.forEach((b, i) => {
+    if (useCity) {
+      // 城市视觉层：隐形热区盒（编辑器拾取）+ 楼模型子节点；物理照旧走块数据
+      const mesh = makeBlockVisual(b, i, assets, town.buildingStyles, town.seed ?? 0);
+      scene.add(mesh);
+      blockMeshes.push(mesh);
+    } else if (assets['matWall']) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), makeMeshMaterial(assets['matWall'], 0x777777));
       mesh.position.set(b.x, b.h / 2, b.z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -87,6 +99,11 @@ export function buildTown(options: {
       blockMeshes.push(mesh);
     }
     physics.addStaticBox(new THREE.Vector3(b.x, b.h / 2, b.z), new THREE.Vector3(b.w / 2, b.h / 2, b.d / 2));
+  });
+
+  if (useCity) {
+    buildRoads(scene, town, assets);
+    buildPlaza(scene, town, assets);
   }
 
   return blockMeshes;
