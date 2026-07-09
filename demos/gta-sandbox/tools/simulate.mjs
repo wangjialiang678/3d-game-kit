@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { materializeBlocks, validateContent, validateTuning, insideAnyBlock, resolveEntityPoint } from '../content-lib/core.mjs';
 import { validateRules, simulateEvent, resolvePoint } from '../content-lib/rules.mjs';
+import { harness } from '@kit/core/sim-harness.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (f) => JSON.parse(readFileSync(join(ROOT, 'public/content', f), 'utf8'));
@@ -28,11 +29,8 @@ const tuning = read('tuning.json');
 const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
 const content = { scene, missions: missionsPack.missions, blocks, rules, tuning };
 
-let failed = 0;
-const check = (name, ok, detail = '') => {
-  console.log(`${ok ? '✅' : '❌'} ${name}${detail ? '  ' + detail : ''}`);
-  if (!ok) failed++;
-};
+const sim = harness('gta-sandbox');
+const check = (...args) => sim.check(...args);
 
 console.log('===== L0 静态校验 =====');
 const l0 = [...validateContent(content), ...validateRules(rules, content), ...validateTuning(tuning)];
@@ -93,5 +91,5 @@ console.log('\n===== L1 抽象模拟（无渲染） =====');
 }
 
 const ms = (performance.now() - t0).toFixed(1);
-console.log(`\n${failed === 0 ? '🎉 L0+L1 全部通过' : `💥 ${failed} 项失败`}（总耗时 ${ms}ms —— 对比 L2 渲染试玩约 40,000ms）`);
-process.exit(failed === 0 ? 0 : 1);
+console.log(`\n${sim.failed === 0 ? '🎉 L0+L1 全部通过' : `💥 ${sim.failed} 项失败`}（总耗时 ${ms}ms —— 对比 L2 渲染试玩约 40,000ms）`);
+process.exit(sim.failed === 0 ? 0 : 1);

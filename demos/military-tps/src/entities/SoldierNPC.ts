@@ -6,11 +6,11 @@ import * as THREE from 'three';
 import Component from '@engine/Component';
 import type Physics from '@engine/Physics';
 import { buildRifle, buildMuzzleFlash, type SoldierInstance } from '../util/soldier';
+import { Bus } from '../events';
+import type { TuningContent } from '../../content-lib/core';
 
 const FOOT = 0.6 + 0.35;
 const FACING_OFFSET = Math.PI;
-const VIEW_DIST = 45, SHOOT_RANGE = 16, MOVE_SPEED = 2.6;
-const FIRE_INTERVAL = 1.1;
 
 type S = 'idle' | 'chase' | 'shoot' | 'dead';
 
@@ -18,6 +18,7 @@ export default class SoldierNPC extends Component {
   private scene: THREE.Scene;
   private physics: Physics;
   private soldier: SoldierInstance;
+  private tuning: TuningContent['enemy'];
   private mixer!: THREE.AnimationMixer;
   private actions: Record<string, THREE.AnimationAction> = {};
   private current = '';
@@ -26,6 +27,7 @@ export default class SoldierNPC extends Component {
   private npcBody: any;
   private player: any;
   public health = 100;
+  private emittedDeath = false;
 
   private rifle = buildRifle();
   private muzzle = buildMuzzleFlash();
@@ -39,13 +41,17 @@ export default class SoldierNPC extends Component {
   private toPlayer = new THREE.Vector3();
   private tmp = new THREE.Vector3();
 
-  constructor(model: SoldierInstance, scene: THREE.Scene, physics: Physics) {
+  constructor(model: SoldierInstance, scene: THREE.Scene, physics: Physics, tuning: TuningContent['enemy']) {
     super();
     this.name = 'SoldierNPC';
     this.soldier = model;
     this.scene = scene;
     this.physics = physics;
+    this.tuning = tuning;
+    this.health = tuning.health;
   }
+
+  get Dead() { return this.state === 'dead'; }
 
   Initialize(): void {
     this.player = this.FindEntity('Player');
@@ -63,7 +69,9 @@ export default class SoldierNPC extends Component {
     this.rifle.add(this.muzzle);
     this.muzzle.position.set(0, 0.02, -0.72);
 
-    const cap = this.physics.createKinematicCapsule(m.position.clone(), 0.6, 0.35);
+    const capPos = m.position.clone();
+    capPos.y += FOOT;
+    const cap = this.physics.createKinematicCapsule(capPos, 0.6, 0.35);
     this.npcBody = cap.body;
     this.physics.colliderToEntity.set(cap.collider.handle, this.parent);
 
@@ -80,12 +88,23 @@ export default class SoldierNPC extends Component {
   takeHit = (msg: any) => {
     if (this.state === 'dead') return;
     this.health = Math.max(0, this.health - (msg.amount ?? 10));
-    if (this.health === 0) { this.state = 'dead'; }
+    if (this.health === 0) { this.state = 'dead'; this.emitDeath(); }
     else if (this.state === 'idle') this.state = 'chase';
   };
 
+  private emitDeath() {
+    if (this.emittedDeath) return;
+    this.emittedDeath = true;
+    const remaining = this.parent!.parent!.GetAll((e) => {
+      const npc = e.GetComponent('SoldierNPC') as SoldierNPC | undefined;
+      return !!npc && npc !== this && !npc.Dead;
+    }).length;
+    Bus.emit('enemy-killed', { name: this.parent!.Name, remaining });
+    if (remaining === 0) Bus.emit('all-enemies-dead', {});
+  }
+
   private canSee(dist: number): boolean {
-    if (dist > VIEW_DIST) return false;
+    if (dist > this.tuning.viewDist) return false;
     const from = this.tmp.copy(this.soldier.model.position); from.y = 1.4;
     const dir = this.toPlayer.clone().setY((this.player.Position.y + 1.4) - 1.4).normalize();
     const hit = this.physics.raycast(from, dir, dist + 1);
@@ -123,18 +142,18 @@ export default class SoldierNPC extends Component {
       case 'chase':
         this.setAnim('Run');
         this.facePlayer(t);
-        if (dist > 0.1) { this.toPlayer.normalize(); m.position.addScaledVector(this.toPlayer, MOVE_SPEED * t); }
-        if (dist <= SHOOT_RANGE && this.canSee(dist)) { this.state = 'shoot'; this.fireTimer = 0.3; }
+        if (dist > 0.1) { this.toPlayer.normalize(); m.position.addScaledVector(this.toPlayer, this.tuning.speed * t); }
+        if (dist <= this.tuning.shootRange && this.canSee(dist)) { this.state = 'shoot'; this.fireTimer = 0.3; }
         break;
       case 'shoot':
         this.setAnim('Idle');
         this.facePlayer(t);
-        if (dist > SHOOT_RANGE * 1.15) { this.state = 'chase'; break; }
+        if (dist > this.tuning.shootRange * 1.15) { this.state = 'chase'; break; }
         this.fireTimer -= t;
         if (this.fireTimer <= 0) {
-          this.fireTimer = FIRE_INTERVAL;
+          this.fireTimer = this.tuning.fireInterval;
           this.muzzle.visible = true; (this.muzzle as any)._life = 0.05;
-          if (this.canSee(dist)) this.player.Broadcast({ topic: 'hit', amount: 8, from: this.parent });
+          if (this.canSee(dist)) this.player.Broadcast({ topic: 'hit', amount: this.tuning.damage, from: this.parent });
         }
         break;
     }

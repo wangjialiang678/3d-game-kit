@@ -34,6 +34,18 @@
         background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px;
       }
       #health-bar { height: 100%; width: 100%; background: #e6e6e6; border-radius: 2px; transition: width 0.15s; }
+      #objective {
+        position: absolute; left: 50%; top: 28px; transform: translateX(-50%);
+        min-width: 260px; text-align: center; color: #f3f6f8; font-weight: 700;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.9); letter-spacing: 0.5px;
+      }
+      #objective .nav { margin-top: 4px; font-size: 13px; color: #ffd24a; }
+      #toast {
+        position: absolute; left: 50%; top: 92px; transform: translateX(-50%);
+        background: rgba(12,14,18,0.86); color: #fff2c4; border: 1px solid rgba(255,210,74,0.45);
+        border-radius: 6px; padding: 8px 16px; font-size: 14px; font-weight: 700;
+        opacity: 0; transition: opacity 0.2s;
+      }
 
       /* Menu / loading */
       #menu {
@@ -51,12 +63,21 @@
       #progress-wrap { width: 320px; height: 6px; background: #222; margin-top: 26px; border-radius: 3px; overflow: hidden; }
       #progress { height: 100%; width: 0%; background: #fff; transition: width 0.2s; }
       #hint { margin-top: 18px; font-size: 12px; opacity: 0.4; letter-spacing: 1px; }
+      #content-errors {
+        display: none; max-width: 720px; margin: 0 auto 18px; padding: 14px 18px;
+        background: #2a1111; border: 1px solid #7f3333; border-radius: 6px; color: #ffd9d9;
+        font: 13px/1.5 Arial; text-align: left;
+      }
+      #content-errors .ce-title { font-weight: 800; margin-bottom: 8px; color: #fff; }
+      #content-errors .ce-item { margin: 4px 0; }
     </style>
   </head>
   <body>
     <div id="crosshair"></div>
 
     <div id="hud">
+      <div id="objective"><div class="text">Neutralize hostiles</div><div class="nav"></div></div>
+      <div id="toast"></div>
       <div id="health-wrap"><div id="health-bar"></div></div>
       <div id="ammo"><span class="mag">30</span> <span class="reserve">/ 100</span></div>
     </div>
@@ -64,6 +85,7 @@
     <div id="menu">
       <h1>OPERATION</h1>
       <div class="sub">THREE.JS + RAPIER · THIRD-PERSON MILITARY</div>
+      <div id="content-errors"></div>
       <button id="start_game" disabled>LOADING…</button>
       <div id="progress-wrap"><div id="progress"></div></div>
       <div id="hint">WASD 移动 · 鼠标瞄准 · 左键射击 · R 换弹 · 空格跳 · <b>V 切换第一/第三人称</b></div>

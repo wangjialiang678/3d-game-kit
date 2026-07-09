@@ -8,21 +8,30 @@ import Component from '@engine/Component';
 import Input from '@engine/Input';
 import type Physics from '@engine/Physics';
 import type { Character } from '@engine/Physics';
-import type UIManager from './UIManager';
 import { buildRifle, buildMuzzleFlash, type SoldierInstance } from '../util/soldier';
+import { Bus } from '../events';
+import type { TuningContent } from '../../content-lib/core';
 
 const CAP_HALF = 0.6, CAP_RADIUS = 0.35, FOOT = CAP_HALF + CAP_RADIUS;
 const MODEL_SCALE = 1.0;
 const FACING_OFFSET = Math.PI;          // Soldier.glb faces +Z; flip to face aim
-const MOUSE = 0.0022;
-const MAX_SPEED = 5.2, ACCEL = MAX_SPEED / 0.09, DECEL = -10;
+const DECEL = -10;
 const TP_DIST = 4.0, TP_PIVOT_Y = 1.45, TP_SIDE = 0.6, FP_EYE = 1.62;
+
+export interface PointerLockAdapter {
+  isLocked(): boolean;
+  request(): void;
+  onChange(fn: () => void): void;
+}
 
 export default class ThirdPersonPlayer extends Component {
   private camera: THREE.PerspectiveCamera;
   private physics: Physics;
   private scene: THREE.Scene;
   private soldier: SoldierInstance;
+  private playerTuning: TuningContent['player'];
+  private weaponTuning: TuningContent['weapon'];
+  private pointer: PointerLockAdapter;
   private character!: Character;
 
   private mixer!: THREE.AnimationMixer;
@@ -35,7 +44,7 @@ export default class ThirdPersonPlayer extends Component {
   private handWQ = new THREE.Quaternion();
 
   public mode: 'TP' | 'FP' = 'TP';
-  private yaw = 0; private pitch = 0.05;
+  public yaw = 0; public pitch = 0.05;
   private isLocked = false;
 
   private speed = new THREE.Vector3();
@@ -43,11 +52,9 @@ export default class ThirdPersonPlayer extends Component {
   private modelYaw = 0;
 
   private shooting = false; private shootTimer = 0;
-  private fireRate = 0.11;
-  public magAmmo = 30; private ammoPerMag = 30; public ammo = 120; private damage = 12;
+  public magAmmo: number; private ammoPerMag: number; public ammo: number; private damage: number;
   private reloading = false; private reloadTimer = 0;
-
-  private ui!: UIManager;
+  private health: number;
   private audioCtx?: AudioContext;
 
   private aimDir = new THREE.Vector3();
@@ -55,16 +62,34 @@ export default class ThirdPersonPlayer extends Component {
   private right = new THREE.Vector3();
   private tmp = new THREE.Vector3();
 
-  constructor(camera: THREE.PerspectiveCamera, physics: Physics, scene: THREE.Scene, soldier: SoldierInstance) {
+  constructor(
+    camera: THREE.PerspectiveCamera,
+    physics: Physics,
+    scene: THREE.Scene,
+    soldier: SoldierInstance,
+    playerTuning: TuningContent['player'],
+    weaponTuning: TuningContent['weapon'],
+    pointer: PointerLockAdapter,
+  ) {
     super();
     this.name = 'ThirdPersonPlayer';
     this.camera = camera;
     this.physics = physics;
     this.scene = scene;
     this.soldier = soldier;
+    this.playerTuning = playerTuning;
+    this.weaponTuning = weaponTuning;
+    this.pointer = pointer;
+    this.ammoPerMag = weaponTuning.ammoPerMag;
+    this.magAmmo = weaponTuning.ammoPerMag;
+    this.ammo = weaponTuning.reserveAmmo;
+    this.damage = weaponTuning.damage;
+    this.health = playerTuning.health;
   }
 
   get PlayerCollider() { return this.character.collider; }
+  get Health() { return this.health; }
+  get Ammo() { return { mag: this.magAmmo, reserve: this.ammo }; }
 
   Initialize(): void {
     const pos = this.parent!.Position;
@@ -82,14 +107,13 @@ export default class ThirdPersonPlayer extends Component {
     this.rifle.add(this.muzzle);
     this.muzzle.position.set(0, 0.02, -0.72);
 
-    this.ui = this.FindEntity('UIManager').GetComponent('UIManager');
-    this.ui.SetAmmo(this.magAmmo, this.ammo);
-    this.ui.SetHealth(100);
+    Bus.emit('ammo-changed', { mag: this.magAmmo, reserve: this.ammo });
+    Bus.emit('health-changed', { health: this.health });
 
     // input
     Input.AddMouseMoveListner(this.onMouse);
-    document.addEventListener('pointerlockchange', () => { this.isLocked = !!document.pointerLockElement; });
-    Input.AddClickListner(() => { if (!this.isLocked) document.body.requestPointerLock(); });
+    this.pointer.onChange(() => { this.isLocked = this.pointer.isLocked(); });
+    Input.AddClickListner(() => { if (!this.isLocked) this.pointer.request(); });
     Input.AddMouseDownListner((e: MouseEvent) => { if (e.button === 0 && !this.reloading) { this.shooting = true; this.shootTimer = 0; } });
     Input.AddMouseUpListner((e: MouseEvent) => { if (e.button === 0) this.shooting = false; });
     Input.AddKeyDownListner((e: KeyboardEvent) => {
@@ -103,15 +127,32 @@ export default class ThirdPersonPlayer extends Component {
   }
 
   private toggleMode() {
-    this.mode = this.mode === 'TP' ? 'FP' : 'TP';
+    this.setCameraMode(this.mode === 'TP' ? 'FP' : 'TP');
+  }
+
+  public setCameraMode(mode: 'TP' | 'FP') {
+    this.mode = mode;
     this.soldier.model.visible = this.mode === 'TP';
     this.rifle.visible = this.mode === 'TP';
   }
 
+  public aimAtWorld(target: THREE.Vector3) {
+    const body = this.character?.body?.translation?.();
+    const origin = this.mode === 'FP' && body
+      ? new THREE.Vector3(body.x, body.y + FP_EYE, body.z)
+      : this.camera.position;
+    const dx = target.x - origin.x;
+    const dy = target.y - origin.y;
+    const dz = target.z - origin.z;
+    const flat = Math.hypot(dx, dz);
+    this.yaw = Math.atan2(-dx, -dz);
+    this.pitch = Math.max(-1.2, Math.min(1.2, Math.atan2(dy, flat)));
+  }
+
   private onMouse = (e: MouseEvent) => {
     if (!this.isLocked) return;
-    this.yaw -= e.movementX * MOUSE;
-    this.pitch -= e.movementY * MOUSE;
+    this.yaw -= e.movementX * this.playerTuning.mouseSpeed;
+    this.pitch -= e.movementY * this.playerTuning.mouseSpeed;
     this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
   };
 
@@ -130,14 +171,13 @@ export default class ThirdPersonPlayer extends Component {
 
   private reload() {
     if (this.reloading || this.magAmmo === this.ammoPerMag || this.ammo === 0) return;
-    this.reloading = true; this.shooting = false; this.reloadTimer = 1.6;
+    this.reloading = true; this.shooting = false; this.reloadTimer = this.weaponTuning.reloadSecs;
   }
 
   private takeDamage(msg: any) {
-    (this as any)._hp = ((this as any)._hp ?? 100) - (msg.amount ?? 8);
-    const hp = Math.max(0, (this as any)._hp);
-    (this as any)._hp = hp;
-    this.ui.SetHealth(hp);
+    this.health = Math.max(0, this.health - (msg.amount ?? 8));
+    Bus.emit('player-hit', { amount: msg.amount ?? 8, health: this.health });
+    Bus.emit('health-changed', { health: this.health });
   }
 
   private gunshot() {
@@ -166,8 +206,10 @@ export default class ThirdPersonPlayer extends Component {
     if (!this.shooting) return;
     if (!this.magAmmo) { this.reload(); return; }
     if (this.shootTimer <= 0) {
-      this.magAmmo--; this.ui.SetAmmo(this.magAmmo, this.ammo);
-      this.shootTimer = this.fireRate;
+      this.magAmmo--;
+      Bus.emit('weapon-fired', { mag: this.magAmmo, reserve: this.ammo });
+      Bus.emit('ammo-changed', { mag: this.magAmmo, reserve: this.ammo });
+      this.shootTimer = this.weaponTuning.fireRate;
       this.raycast();
       this.gunshot();
       this.muzzle.visible = true; (this.muzzle as any)._life = 0.05;
@@ -186,14 +228,15 @@ export default class ThirdPersonPlayer extends Component {
     const dir = this.tmp.copy(this.fwd).multiplyScalar(f).addScaledVector(this.right, r);
     if (dir.lengthSq() > 0) dir.normalize();
 
+    const accel = this.playerTuning.maxSpeed / this.playerTuning.accelTime;
     this.speed.addScaledVector(this.speed, DECEL * t);
-    this.speed.addScaledVector(dir, ACCEL * t);
-    if (this.speed.length() > MAX_SPEED) this.speed.setLength(MAX_SPEED);
+    this.speed.addScaledVector(dir, accel * t);
+    if (this.speed.length() > this.playerTuning.maxSpeed) this.speed.setLength(this.playerTuning.maxSpeed);
 
     this.grounded = this.character.controller.computedGrounded();
     if (this.grounded && this.vVel < 0) this.vVel = -1;
     this.vVel += -20 * t;
-    if (Input.GetKeyDown('Space') && this.grounded) this.vVel = 6;
+    if (Input.GetKeyDown('Space') && this.grounded) this.vVel = this.playerTuning.jumpVelocity;
 
     const desired = { x: this.speed.x * t, y: this.vVel * t, z: this.speed.z * t };
     this.character.controller.computeColliderMovement(this.character.collider, desired);
@@ -225,7 +268,16 @@ export default class ThirdPersonPlayer extends Component {
     }
 
     // ---- shooting + muzzle fade ----
-    if (this.reloading) { this.reloadTimer -= t; if (this.reloadTimer <= 0) { this.reloading = false; const need = this.ammoPerMag - this.magAmmo; this.magAmmo = Math.min(this.ammo + this.magAmmo, this.ammoPerMag); this.ammo = Math.max(0, this.ammo - need); this.ui.SetAmmo(this.magAmmo, this.ammo); } }
+    if (this.reloading) {
+      this.reloadTimer -= t;
+      if (this.reloadTimer <= 0) {
+        this.reloading = false;
+        const need = this.ammoPerMag - this.magAmmo;
+        this.magAmmo = Math.min(this.ammo + this.magAmmo, this.ammoPerMag);
+        this.ammo = Math.max(0, this.ammo - need);
+        Bus.emit('ammo-changed', { mag: this.magAmmo, reserve: this.ammo });
+      }
+    }
     this.shoot(t);
     if (this.muzzle.visible) { (this.muzzle as any)._life -= t; if ((this.muzzle as any)._life <= 0) this.muzzle.visible = false; }
 

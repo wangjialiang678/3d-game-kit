@@ -10,6 +10,7 @@
  */
 import { insideAnyBlock } from './core.mjs';
 import { EVENTS } from './events.mjs';
+import { createRulesCore } from '@kit/core/rules-core.mjs';
 
 export { EVENTS };
 // toast 是呈现事件，同时 toast 动作也会发 toast；禁止作为规则触发源，避免数据写出 toast→toast 递归。
@@ -42,35 +43,11 @@ export const ACTIONS = {
   },
 };
 
+const core = createRulesCore({ triggerEvents: RULE_TRIGGER_EVENTS, actions: ACTIONS });
+
 /** 条件求值（受限词汇：目前支持 minLevel）。 */
-export function evalCondition(cond, eventData) {
-  if (!cond) return true;
-  if (cond.minLevel !== undefined && !((eventData?.level ?? 0) >= cond.minLevel)) return false;
-  return true;
-}
-
+export const evalCondition = core.evalCondition;
 /** L0：规则包静态校验——事件名/动作名/参数/点位全部合法才放行。 */
-export function validateRules(rulesPack, content) {
-  const issues = [];
-  (rulesPack.rules ?? []).forEach((r, i) => {
-    const tag = `rules[${i}]`;
-    if (!RULE_TRIGGER_EVENTS.includes(r.on)) issues.push({ where: tag, message: `未知规则触发事件 "${r.on}"（可用：${RULE_TRIGGER_EVENTS.join('/')}；toast 是呈现事件，不能触发规则）` });
-    if (!Array.isArray(r.do) || !r.do.length) issues.push({ where: tag, message: '缺少 do 动作列表' });
-    (r.do ?? []).forEach((a, j) => {
-      const spec = ACTIONS[a.action];
-      if (!spec) { issues.push({ where: `${tag}.do[${j}]`, message: `未知动作 "${a.action}"（词汇表：${Object.keys(ACTIONS).join('/')}）` }); return; }
-      const err = spec.validate(a, content);
-      if (err) issues.push({ where: `${tag}.do[${j}]`, message: err });
-    });
-  });
-  return issues;
-}
-
+export const validateRules = core.validateRules;
 /** L1：抽象执行一个事件——不渲染、不开浏览器，纯状态推演。 */
-export function simulateEvent(rulesPack, content, state, eventName, eventData) {
-  for (const r of rulesPack.rules ?? []) {
-    if (r.on !== eventName || !evalCondition(r.if, eventData)) continue;
-    for (const a of r.do) ACTIONS[a.action]?.simulate(a, content, state);
-  }
-  return state;
-}
+export const simulateEvent = core.simulateEvent;

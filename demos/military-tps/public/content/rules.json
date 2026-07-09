@@ -1,0 +1,12 @@
+{
+  "_comment": "ECA rules for military-tps. Actions are closed by content-lib/rules.mjs.",
+  "version": 1,
+  "rules": [
+    {
+      "on": "all-enemies-dead",
+      "do": [
+        { "action": "toast", "text": "🎖 全歼敌军！" }
+      ]
+    }
+  ]
+}

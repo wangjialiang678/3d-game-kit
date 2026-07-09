@@ -14,8 +14,10 @@
     "baseUrl": ".",
     "paths": {
       "@engine": ["../../packages/engine/src/index.ts"],
-      "@engine/*": ["../../packages/engine/src/*"]
+      "@engine/*": ["../../packages/engine/src/*"],
+      "@kit/core": ["../../packages/kit/index.mjs"],
+      "@kit/core/*": ["../../packages/kit/*"]
     }
   },
-  "include": ["src", "../../packages/engine/src"]
+  "include": ["src", "../../packages/engine/src", "../../packages/kit"]
 }

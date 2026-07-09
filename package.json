@@ -10,6 +10,7 @@
   "scripts": {
     "military": "npm run dev -w @demo/military-tps",
     "gta": "npm run dev -w @demo/gta-sandbox",
-    "playtest": "node demos/gta-sandbox/tools/playtest.mjs"
+    "playtest": "node demos/gta-sandbox/tools/playtest.mjs",
+    "playtest:military": "node demos/military-tps/tools/playtest.mjs"
   }
 }

@@ -1,43 +1,29 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { dirname } from 'node:path';
+import { contentSavePlugin } from '@kit/core/vite-content-save.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-
-/** P4：可视化编辑器的保存通道（仅 dev）。POST /__kit/save-content → 写回 public/content/*.json */
-function contentSavePlugin(): Plugin {
-  return {
-    name: 'kit-content-save',
-    configureServer(server) {
-      server.middlewares.use('/__kit/save-content', (req, res) => {
-        if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
-        let body = '';
-        req.on('data', (c) => { body += c; });
-        req.on('end', () => {
-          try {
-            const { scene, missionsPack } = JSON.parse(body);
-            if (!scene?.town || !missionsPack?.missions) throw new Error('缺少 scene/missionsPack');
-            writeFileSync(join(ROOT, 'public/content/scene.json'), JSON.stringify(scene, null, 2) + '\n');
-            writeFileSync(join(ROOT, 'public/content/missions.json'), JSON.stringify(missionsPack, null, 2) + '\n');
-            res.setHeader('content-type', 'application/json');
-            res.end(JSON.stringify({ ok: true }));
-          } catch (e) {
-            res.statusCode = 400;
-            res.end(JSON.stringify({ ok: false, error: String(e) }));
-          }
-        });
-      });
-    },
-  };
-}
 
 export default defineConfig({
   resolve: {
     alias: {
       '@engine': fileURLToPath(new URL('../../packages/engine/src', import.meta.url)),
+      '@kit/core': fileURLToPath(new URL('../../packages/kit', import.meta.url)),
     },
   },
-  plugins: [contentSavePlugin()],
+  plugins: [contentSavePlugin({
+    root: ROOT,
+    files: {
+      scene: 'public/content/scene.json',
+      missionsPack: 'public/content/missions.json',
+    },
+    validate: (payload) => {
+      const issues = [];
+      if (!payload.scene?.town) issues.push({ where: 'payload.scene', message: '缺少 scene.town' });
+      if (!payload.missionsPack?.missions) issues.push({ where: 'payload.missionsPack', message: '缺少 missionsPack.missions' });
+      return issues;
+    },
+  })],
   server: { host: '127.0.0.1', port: 5177, fs: { strict: false } },
 });

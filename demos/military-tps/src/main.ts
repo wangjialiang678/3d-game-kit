@@ -1,37 +1,84 @@
 /**
- * main.ts — three-military-tps
- * A third-person (togglable first-person) military shooter built on the same ECS engine,
- * with all-new CC0 assets: three.js "Soldier" (Mixamo-rigged), Poly Haven HDRI sky + PBR textures,
- * a procedural arena, and a procedural rifle.
+ * Military TPS demo built on @engine plus @kit/core middleware.
+ * Gameplay data lives in public/content; this file assembles rendering,
+ * physics, prefab instances, views, rules, recorder, editor, and autotest.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
-import Physics, { initPhysics } from '@engine/Physics';
-import EntityManager from '@engine/EntityManager';
-import Entity from '@engine/Entity';
-import UIManager from './entities/UIManager';
-import ThirdPersonPlayer from './entities/ThirdPersonPlayer';
-import SoldierNPC from './entities/SoldierNPC';
-import { cloneSoldier } from './util/soldier';
-
-const ARENA = 30; // half-extent
+import { Physics, initPhysics, EntityManager, Entity, Input } from '@engine';
+import HudView from './view/HudView';
+import { loadContent, type Content } from './content/ContentLoader';
+import { validateContent, validateTuning, resolveEntityPoint } from '../content-lib/core.mjs';
+import { validateRules } from '../content-lib/rules.mjs';
+import type { Issue, EntityInstance } from '../content-lib/core';
+import PrefabRegistry from './game/PrefabRegistry';
+import RuleSystem from './entities/RuleSystem';
+import FlightRecorder from './debug/FlightRecorder';
 
 class Game {
-  private renderer!: THREE.WebGLRenderer;
-  private scene!: THREE.Scene;
-  private camera!: THREE.PerspectiveCamera;
-  private physics!: Physics;
-  private entityManager!: EntityManager;
+  public renderer!: THREE.WebGLRenderer;
+  public scene!: THREE.Scene;
+  public camera!: THREE.PerspectiveCamera;
+  public physics!: Physics;
+  public em!: EntityManager;
+  public content!: Content;
+  public assets: Record<string, any> = {};
+  public coverMeshes: THREE.Mesh[] = [];
+  public running = false;
+  public tick = 0;
+  public runSeed = 0;
+
   private clock = new THREE.Clock();
-  private assets: Record<string, any> = {};
-  private running = false;
+  private prefabs!: PrefabRegistry;
+  private editorOpen = false;
+  private recorder: any = null;
 
   async init() {
     await initPhysics();
     this.setupGraphics();
+
+    try {
+      this.content = await loadContent('/content/arena.json', '/content/rules.json', '/content/tuning.json');
+    } catch (e) {
+      this.showContentErrors([{ where: 'content', message: String(e) }]);
+      return;
+    }
+
+    const issues = [
+      ...validateContent(this.content),
+      ...validateRules(this.content.rules, this.content),
+      ...validateTuning(this.content.tuning),
+    ];
+    if (issues.length) { this.showContentErrors(issues); return; }
+
     await this.loadAssets();
-    this.setupStartButton();
+    const btn = document.getElementById('start_game') as HTMLButtonElement;
+    btn.textContent = 'DEPLOY';
+    btn.disabled = false;
+    btn.addEventListener('click', () => this.startGame());
+
+    (window as any).__flight = {
+      dump: () => { throw new Error('游戏尚未开局，无法 dump'); },
+    };
+
+    if (new URLSearchParams(location.search).has('autotest')) {
+      this.startGame();
+      const { default: AutoTest } = await import('./test/AutoTest');
+      new AutoTest(this).run();
+    }
+  }
+
+  showContentErrors(issues: Issue[]) {
+    const el = document.getElementById('content-errors') as HTMLElement;
+    el.style.display = 'block';
+    el.innerHTML =
+      `<div class="ce-title">内容包校验失败（${issues.length} 处）- 修复 public/content/*.json 后刷新</div>` +
+      issues.map((i) => `<div class="ce-item"><b>${i.where}</b>: ${i.message}</div>`).join('');
+    const btn = document.getElementById('start_game') as HTMLButtonElement;
+    btn.textContent = 'CONTENT ERROR';
+    btn.disabled = true;
+    console.error('[content] validation failed:', issues);
   }
 
   setupGraphics() {
@@ -92,37 +139,29 @@ class Game {
     const bar = document.getElementById('progress')!;
     const track = (p: Promise<any>, name: string) => jobs.push(p.then((r) => { this.assets[name] = r; }));
 
-    track(gltf.loadAsync('/assets/characters/Soldier.glb'), 'soldier');
-    track(rgbe.loadAsync('/assets/sky/the_sky_is_on_fire.hdr'), 'sky');
+    track(gltf.loadAsync(this.content.arena.assets.soldier), 'soldier');
+    track(rgbe.loadAsync(this.content.arena.assets.sky), 'sky');
 
     let done = 0;
     jobs.forEach((j) => j.then(() => { done++; bar.style.width = `${(done / jobs.length) * 100}%`; }));
     await Promise.all(jobs);
 
-    // sky + image-based lighting
     const sky = this.assets['sky'] as THREE.Texture;
     sky.mapping = THREE.EquirectangularReflectionMapping;
     this.scene.background = sky;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromEquirectangular(sky).texture;
 
-    // materials (built after renderer exists)
     this.assets['matGround'] = this.loadTex('ground', 24);
     this.assets['matWall'] = this.loadTex('wall', 4);
     this.assets['matMetal'] = this.loadTex('metal', 2);
   }
 
-  setupStartButton() {
-    const btn = document.getElementById('start_game') as HTMLButtonElement;
-    btn.textContent = 'DEPLOY';
-    btn.disabled = false;
-    btn.addEventListener('click', () => this.startGame());
-  }
-
   private box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x, y, z);
-    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     this.scene.add(mesh);
     this.physics.addStaticBox(new THREE.Vector3(x, y, z), new THREE.Vector3(w / 2, h / 2, d / 2));
     return mesh;
@@ -130,69 +169,103 @@ class Game {
 
   buildArena() {
     const { matGround, matWall, matMetal } = this.assets;
-    // ground
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(ARENA * 2, 1, ARENA * 2), matGround);
-    ground.position.y = -0.5; ground.receiveShadow = true;
+    const arena = this.content.arena;
+    const half = arena.groundHalf;
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), matGround);
+    ground.position.y = -0.5;
+    ground.receiveShadow = true;
     this.scene.add(ground);
-    this.physics.addStaticBox(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(ARENA, 0.5, ARENA));
-    // perimeter walls
-    const H = 4;
-    this.box(ARENA * 2, H, 1, matWall, 0, H / 2, -ARENA);
-    this.box(ARENA * 2, H, 1, matWall, 0, H / 2, ARENA);
-    this.box(1, H, ARENA * 2, matWall, -ARENA, H / 2, 0);
-    this.box(1, H, ARENA * 2, matWall, ARENA, H / 2, 0);
-    // cover: containers (metal) + concrete blocks
-    const covers: [number, number, number, number, number, number, THREE.Material][] = [
-      [6, 2.6, 2.5, -12, 1.3, -10, matMetal], [6, 2.6, 2.5, 14, 1.3, -6, matMetal],
-      [2.5, 2.6, 6, -8, 1.3, 12, matMetal], [6, 2.6, 2.5, 10, 1.3, 15, matMetal],
-      [3, 2, 3, 0, 1, -14, matWall], [3, 2, 3, -18, 1, 6, matWall],
-      [3, 2, 3, 18, 1, 10, matWall], [3, 2, 3, 6, 1, 4, matWall],
-      [2.5, 2.6, 6, 20, 1.3, -16, matMetal], [6, 2.6, 2.5, -20, 1.3, -18, matMetal],
-      [3, 2, 3, -6, 1, -4, matWall], [3, 2, 3, 12, 1, -20, matWall],
-    ];
-    for (const [w, h, d, x, y, z, m] of covers) this.box(w, h, d, m, x, y, z);
+    this.physics.addStaticBox(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(half, 0.5, half));
+
+    const h = arena.wallHeight;
+    this.box(half * 2, h, 1, matWall, 0, h / 2, -half);
+    this.box(half * 2, h, 1, matWall, 0, h / 2, half);
+    this.box(1, h, half * 2, matWall, -half, h / 2, 0);
+    this.box(1, h, half * 2, matWall, half, h / 2, 0);
+
+    this.coverMeshes = [];
+    for (const cover of arena.covers) {
+      const mat = cover.material === 'metal' ? matMetal : matWall;
+      const mesh = this.box(cover.w, cover.h, cover.d, mat, cover.x, cover.h / 2, cover.z);
+      mesh.userData = { type: 'cover', name: cover.name, index: this.coverMeshes.length };
+      this.coverMeshes.push(mesh);
+    }
+  }
+
+  private entityPosition(instance: EntityInstance): THREE.Vector3 {
+    if (instance.at === 'spawns.player') {
+      const p = this.content.arena.spawns.player;
+      return new THREE.Vector3(p[0], p[1], p[2]);
+    }
+    const point = resolveEntityPoint(this.content.arena, instance.at);
+    if (!point) throw new Error(`[scene] 未知实体点位 ${String(instance.at)}`);
+    return new THREE.Vector3(point[0], 0, point[1]);
   }
 
   startGame() {
+    if (this.running) return;
     document.getElementById('menu')!.style.display = 'none';
     document.getElementById('crosshair')!.style.display = 'block';
     document.getElementById('hud')!.style.display = 'block';
 
+    Input.ClearEventListners();
+    this.tick = 0;
+    this.runSeed = Date.now() % 0x80000000;
     this.physics = new Physics(-9.81);
-    this.entityManager = new EntityManager();
+    this.em = new EntityManager();
     this.buildArena();
 
-    const ui = new Entity(); ui.SetName('UIManager'); ui.AddComponent(new UIManager());
-    this.entityManager.Add(ui);
-
-    // player (third person soldier)
-    const player = new Entity(); player.SetName('Player');
-    player.AddComponent(new ThirdPersonPlayer(this.camera, this.physics, this.scene, cloneSoldier(this.assets['soldier'])));
-    player.SetPosition(new THREE.Vector3(0, 2, 6));
-    this.entityManager.Add(player);
-
-    // enemy soldiers (recolored variants)
-    const spawns: [number, number, number, number][] = [
-      [-18, -18, 0xb04030, 0], [18, -14, 0x7a6a44, 1], [16, 16, 0x4a6a3a, 2],
-      [-16, 14, 0x8a5a30, 3], [0, 22, 0x5a5a6a, 4],
-    ];
-    spawns.forEach(([x, z, tint, i]) => {
-      const e = new Entity(); e.SetName(`Enemy${i}`);
-      e.SetPosition(new THREE.Vector3(x, 0, z));
-      e.AddComponent(new SoldierNPC(cloneSoldier(this.assets['soldier'], tint), this.scene, this.physics));
-      this.entityManager.Add(e);
+    this.prefabs = new PrefabRegistry({
+      camera: this.camera,
+      physics: this.physics,
+      scene: this.scene,
+      arena: this.content.arena,
+      tuning: this.content.tuning,
+      assets: this.assets,
+      pointer: {
+        isLocked: () => Input.PointerLocked,
+        request: () => { try { Input.RequestPointerLock(); } catch { /* headless */ } },
+        onChange: (fn) => document.addEventListener('pointerlockchange', fn),
+      },
     });
 
-    this.entityManager.EndSetup();
-    this.scene.add(this.camera);
+    for (const instance of this.content.arena.entities) {
+      this.em.Add(this.prefabs.spawn(instance, this.entityPosition(instance)));
+    }
 
-    document.body.requestPointerLock();
+    const rules = new Entity();
+    rules.SetName('Rules');
+    rules.AddComponent(new RuleSystem(this.content.rules, this.content));
+    this.em.Add(rules);
+
+    const hud = new Entity();
+    hud.SetName('Hud');
+    hud.AddComponent(new HudView(this.camera));
+    this.em.Add(hud);
+
+    this.recorder = new FlightRecorder(this);
+    this.em.EndSetup();
+    this.scene.add(this.camera);
+    try { Input.RequestPointerLock(); } catch { /* headless/autotest */ }
+
+    this.installEditorShortcut();
+
     this.running = true;
     this.clock.start();
     this.renderer.setAnimationLoop(this.loop);
   }
 
-  // 固定步长累加器：帧率无关性——低帧率时每帧补跑逻辑子步，游戏时间=真实时间
+  private installEditorShortcut() {
+    document.addEventListener('keydown', async (e) => {
+      if (e.code !== 'KeyE' || this.editorOpen) return;
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      this.editorOpen = true;
+      const { default: Editor } = await import('./editor/Editor');
+      new Editor(this).enter();
+    });
+  }
+
   private acc = 0;
   private static readonly STEP = 1 / 60;
   private static readonly MAX_SUBSTEPS = 12;
@@ -202,9 +275,14 @@ class Game {
     this.acc += Math.min(0.25, this.clock.getDelta());
     let n = 0;
     while (this.acc >= Game.STEP && n < Game.MAX_SUBSTEPS) {
+      const tick = this.tick;
+      this.recorder?.applyReplayTick(tick);
       this.physics.step();
-      this.entityManager.Update(Game.STEP);
+      this.em.Update(Game.STEP);
+      this.recorder?.recordInputTick(tick);
       this.acc -= Game.STEP;
+      this.tick++;
+      this.recorder?.afterReplayTick(this.tick);
       n++;
     }
     if (n === Game.MAX_SUBSTEPS) this.acc = 0;

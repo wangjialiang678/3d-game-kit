@@ -3,6 +3,7 @@
  * 核心逻辑（物化/校验）在 ../../content-lib/core.mjs —— 与 Node CLI 编辑工具共用同一实现。
  */
 import { materializeBlocks } from '../../content-lib/core.mjs';
+import { fetchJsonReader, loadPack } from '@kit/core/content-pipeline.mjs';
 import type { TownParams, Block, TuningContent, PrefabDefinition, EntityInstance } from '../../content-lib/core';
 
 export type { TownParams, Block, TuningContent };
@@ -41,16 +42,13 @@ export interface Content {
 }
 
 export async function loadContent(sceneUrl: string, missionsUrl: string, rulesUrl: string, tuningUrl: string): Promise<Content> {
-  const [sceneRes, missionsRes, rulesRes, tuningRes] = await Promise.all([fetch(sceneUrl), fetch(missionsUrl), fetch(rulesUrl), fetch(tuningUrl)]);
-  if (!sceneRes.ok) throw new Error(`无法加载 ${sceneUrl}: HTTP ${sceneRes.status}`);
-  if (!missionsRes.ok) throw new Error(`无法加载 ${missionsUrl}: HTTP ${missionsRes.status}`);
-  if (!rulesRes.ok) throw new Error(`无法加载 ${rulesUrl}: HTTP ${rulesRes.status}`);
-  if (!tuningRes.ok) throw new Error(`无法加载 ${tuningUrl}: HTTP ${tuningRes.status}`);
-  const scene = (await sceneRes.json()) as SceneContent;
-  const missionsPack = (await missionsRes.json()) as { missions: MissionData[] };
-  const rules = await rulesRes.json();
-  const tuning = (await tuningRes.json()) as TuningContent;
-  // 显式 blocks 优先（编辑器产物）；否则由 town 种子物化
-  const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
-  return { scene, missions: missionsPack.missions ?? [], blocks, rules, tuning };
+  return loadPack<Content>({
+    files: { scene: sceneUrl, missionsPack: missionsUrl, rules: rulesUrl, tuning: tuningUrl },
+    reader: fetchJsonReader(),
+    build: ({ scene, missionsPack, rules, tuning }) => {
+      const s = scene as SceneContent;
+      const blocks = s.blocks?.length ? s.blocks : materializeBlocks(s.town);
+      return { scene: s, missions: (missionsPack as { missions: MissionData[] }).missions ?? [], blocks, rules, tuning: tuning as TuningContent };
+    },
+  });
 }

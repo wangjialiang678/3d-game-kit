@@ -10,13 +10,14 @@
 ```
 3d-game-kit/
 ├── packages/
-│   └── engine/            ← 共用游戏框架（所有 demo 复用同一份代码）
-│       └── src/
-│           ├── Entity.ts / Component.ts / EntityManager.ts   实体-组件架构
-│           ├── FiniteStateMachine.ts                          状态机（AI/武器）
-│           ├── Physics.ts                                     Rapier 物理封装
-│           ├── Input.ts                                       键鼠输入（含防卡键）
-│           └── index.ts                                       统一出口 '@engine'
+│   ├── engine/            ← 共用游戏框架（所有 demo 复用同一份代码）
+│   │   └── src/
+│   │       ├── Entity.ts / Component.ts / EntityManager.ts   实体-组件架构
+│   │       ├── FiniteStateMachine.ts                          状态机（AI/武器）
+│   │       ├── Physics.ts                                     Rapier 物理封装
+│   │       ├── Input.ts                                       键鼠输入（含防卡键）
+│   │       └── index.ts                                       统一出口 '@engine'
+│   └── kit/               ← 共用中间件（内容管线/规则/飞行记录仪/试玩/模拟 harness）
 ├── demos/                 ← 每个 demo 独立可跑，共享上面的框架
 │   ├── military-tps/      第三人称军事射击（敌人 AI、FP/TP 切换、射击）
 │   └── gta-sandbox/       GTA 式小镇沙盒（开车、通缉、警察追捕、任务链）
@@ -52,18 +53,19 @@ WASD 移动/驾驶 · 鼠标看向 · **F 上/下车** · **G 惹麻烦（涨通
 | 语言/构建 | TypeScript + Vite（npm workspaces monorepo） |
 | 架构 | 自研 **Entity-Component**（实体=组件容器，游戏=实体的组合） |
 
-## AI-native 内容管线（gta-sandbox 已落地）
+## AI-native 内容管线（两个 demo 已落地）
 
 "编辑器 = headless 操作层 + 单一内容数据源；AI 和人都是它的客户端"——四层已全部可用：
 
-| 能力 | 入口 | 说明 |
-|---|---|---|
-| **内容包**（P1） | `demos/gta-sandbox/public/content/*.json` | 关卡/任务/出生点全部数据化；加载时自动校验，非法内容红字拒绝开局 |
-| **headless 编辑**（P2） | `node tools/content.mjs ...` + 项目 skill | 查/改/校验一体，AI 代理的编辑入口；与游戏共用同一份校验规则 |
-| **试玩验证**（P3） | `npm run playtest` | 机器人以真实输入打穿全部任务（无头 Chrome），CI 可用，失败带黑匣子遥测+截图 |
-| **可视化编辑器**（P4） | 游戏中按 **E** | 俯瞰点选/拖拽/属性面板/增删，校验通过才能保存，保存写回同一份 JSON 并热重载 |
-| **ECA 规则层**（P5） | `content/rules.json` | 玩法逻辑用"事件-条件-动作"数据描述；动作词汇表封闭、每个动作自带校验（如 teleport 只接受命名点位）——AI 在规则层**写不出**"传送进楼里"这类 bug |
-| **L1 抽象模拟**（P5） | `node tools/simulate.mjs` | **不渲染、不开浏览器**的逻辑推演：7 项断言 1.4ms（渲染试玩要 40s）；逻辑 bug 在这层抓，截图只留给视觉问题 |
+| 能力 | gta-sandbox | military-tps | 入口 | 说明 |
+|---|---:|---:|---|---|
+| **内容包**（P1） | ✅ | ✅ | `demos/*/public/content/*.json` | 关卡/任务/出生点/敌人/掩体数据化；加载时自动校验，非法内容红字拒绝开局 |
+| **headless 编辑**（P2） | ✅ | ✅ | `node tools/content.mjs ...` | 查/改/校验一体；与游戏共用同一份校验规则 |
+| **试玩验证**（P3） | ✅ | ✅ | `npm run playtest` / `npm run playtest:military` | 机器人以真实输入路径跑通目标流程（无头 Chrome），失败带截图/遥测 |
+| **可视化编辑器**（P4） | ✅ | ✅ | 游戏中按 **E** | 俯瞰点选/拖拽/属性面板，校验通过才能保存，保存写回 JSON 并重载 |
+| **ECA 规则层**（P5） | ✅ | ✅ | `content/rules.json` | 玩法逻辑用"事件-条件-动作"数据描述；动作词汇表封闭、每个动作自带校验 |
+| **L1 抽象模拟**（P5） | ✅ | ✅ | `node tools/simulate.mjs` | 不渲染、不开浏览器的逻辑推演；逻辑 bug 在这层抓，截图只留给视觉问题 |
+| **飞行记录仪/回放** | ✅ | ✅ | **F9** / `window.__flight.dump()` | 2 分钟状态环、关键事件、输入流、watchdog 诊断包 |
 
 引擎还内建**固定步长累加器**（帧率无关性）：低帧率环境（无头/慢机器）游戏速度不变。
 

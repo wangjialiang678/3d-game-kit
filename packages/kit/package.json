@@ -1,0 +1,17 @@
+{
+  "name": "@kit/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./content-pipeline.mjs": "./content-pipeline.mjs",
+    "./FlightRecorder": "./FlightRecorder.ts",
+    "./playtest-lib.mjs": "./playtest-lib.mjs",
+    "./rules-core.mjs": "./rules-core.mjs",
+    "./sim-harness.mjs": "./sim-harness.mjs",
+    "./spatial.mjs": "./spatial.mjs",
+    "./vite-content-save.mjs": "./vite-content-save.mjs"
+  }
+}

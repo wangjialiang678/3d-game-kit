@@ -1,0 +1,40 @@
+{
+  "_comment": "Military arena content pack. Covers, spawns, assets, prefabs, and entity instances are data; loaders/CLI/editor all validate the same file.",
+  "name": "operation-box-canyon",
+  "version": 1,
+  "groundHalf": 30,
+  "wallHeight": 4,
+  "assets": {
+    "soldier": "/assets/characters/Soldier.glb",
+    "sky": "/assets/sky/the_sky_is_on_fire.hdr"
+  },
+  "spawns": {
+    "player": [0, 2, 6]
+  },
+  "covers": [
+    { "name": "cargo-west", "x": -12, "z": -10, "w": 6, "h": 2.6, "d": 2.5, "material": "metal" },
+    { "name": "cargo-east", "x": 14, "z": -6, "w": 6, "h": 2.6, "d": 2.5, "material": "metal" },
+    { "name": "cargo-southwest", "x": -8, "z": 12, "w": 2.5, "h": 2.6, "d": 6, "material": "metal" },
+    { "name": "cargo-southeast", "x": 10, "z": 15, "w": 6, "h": 2.6, "d": 2.5, "material": "metal" },
+    { "name": "block-north", "x": 0, "z": -14, "w": 3, "h": 2, "d": 3, "material": "wall" },
+    { "name": "block-west", "x": -18, "z": 6, "w": 3, "h": 2, "d": 3, "material": "wall" },
+    { "name": "block-east", "x": 18, "z": 10, "w": 3, "h": 2, "d": 3, "material": "wall" },
+    { "name": "block-mid", "x": 6, "z": 4, "w": 3, "h": 2, "d": 3, "material": "wall" },
+    { "name": "cargo-far-east", "x": 20, "z": -16, "w": 2.5, "h": 2.6, "d": 6, "material": "metal" },
+    { "name": "cargo-far-west", "x": -20, "z": -18, "w": 6, "h": 2.6, "d": 2.5, "material": "metal" },
+    { "name": "block-center-west", "x": -6, "z": -4, "w": 3, "h": 2, "d": 3, "material": "wall" },
+    { "name": "block-northeast", "x": 12, "z": -20, "w": 3, "h": 2, "d": 3, "material": "wall" }
+  ],
+  "prefabs": {
+    "player": { "controller": "ThirdPersonPlayer", "model": "soldier" },
+    "enemy": { "controller": "SoldierNPC", "model": "soldier" }
+  },
+  "entities": [
+    { "prefab": "player", "name": "Player", "at": "spawns.player" },
+    { "prefab": "enemy", "name": "Enemy0", "at": [-24, -24], "tint": "#b04030" },
+    { "prefab": "enemy", "name": "Enemy1", "at": [24, -12], "tint": "#7a6a44" },
+    { "prefab": "enemy", "name": "Enemy2", "at": [16, 16], "tint": "#4a6a3a" },
+    { "prefab": "enemy", "name": "Enemy3", "at": [-16, 14], "tint": "#8a5a30" },
+    { "prefab": "enemy", "name": "Enemy4", "at": [0, 22], "tint": "#5a5a6a" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "_comment": "Military tuning. Validators reject values that make the arena unwinnable, such as enemy.speed >= player.maxSpeed.",
+  "player": {
+    "maxSpeed": 5.2,
+    "accelTime": 0.09,
+    "jumpVelocity": 6,
+    "mouseSpeed": 0.0022,
+    "health": 100
+  },
+  "weapon": {
+    "fireRate": 0.11,
+    "damage": 12,
+    "ammoPerMag": 30,
+    "reserveAmmo": 120,
+    "reloadSecs": 1.6
+  },
+  "enemy": {
+    "speed": 2.6,
+    "viewDist": 45,
+    "shootRange": 16,
+    "fireInterval": 1.1,
+    "damage": 8,
+    "health": 100
+  }
+}

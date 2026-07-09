@@ -5,15 +5,9 @@
  * 纯函数、无 IO、无依赖。
  */
 
-/** 确定性伪随机（种子固定 → 小镇布局固定，可复现、可校验） */
-export function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { mulberry32, insideAnyBlock, findClearSpot, fingerprint } from '@kit/core/spatial.mjs';
+
+export { mulberry32, insideAnyBlock, findClearSpot };
 
 /** 把程序化小镇参数物化成显式建筑列表 [{x,z,w,d,h}]。 */
 export function materializeBlocks(t) {
@@ -246,26 +240,6 @@ export function validateTuning(t) {
   return issues;
 }
 
-/** 点(x,z)是否落在任一建筑内（含 margin 外扩）。运行时自愈与校验共用。 */
-export function insideAnyBlock(blocks, x, z, margin = 0) {
-  return blocks.some((b) =>
-    x > b.x - b.w / 2 - margin && x < b.x + b.w / 2 + margin &&
-    z > b.z - b.d / 2 - margin && z < b.z + b.d / 2 + margin);
-}
-
-/** 找离 (x,z) 最近的空地（螺旋外扩搜索）。所有"放置玩家"的代码都应经过它自愈。 */
-export function findClearSpot(blocks, x, z, margin = 1.0) {
-  if (!insideAnyBlock(blocks, x, z, margin)) return [x, z];
-  for (let r = 2; r <= 60; r += 2) {
-    for (let a = 0; a < 16; a++) {
-      const t = (a / 16) * Math.PI * 2;
-      const cx = x + Math.cos(t) * r, cz = z + Math.sin(t) * r;
-      if (!insideAnyBlock(blocks, cx, cz, margin)) return [cx, cz];
-    }
-  }
-  return [x, z];   // 理论上到不了：整张图都被楼填满
-}
-
 /** 列出所有马路交叉口（网格走廊中线交点）——给编辑器/AI 推荐合法任务点用。 */
 export function roadIntersections(t) {
   const mids = [];
@@ -276,16 +250,10 @@ export function roadIntersections(t) {
 }
 
 export function contentFingerprint(content) {
-  const payload = JSON.stringify({
+  return fingerprint({
     scene: content.scene,
     missions: content.missions,
     rules: content.rules,
     tuning: content.tuning,
   });
-  let h = 0x811c9dc5;
-  for (let i = 0; i < payload.length; i++) {
-    h ^= payload.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16).padStart(8, '0');
 }
