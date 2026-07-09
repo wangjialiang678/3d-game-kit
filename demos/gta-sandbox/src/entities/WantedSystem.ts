@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { Component, Input, Entity } from '@engine';
 import PoliceNPC from './PoliceNPC';
 import { cloneSoldier } from '../util/build';
+import { findClearSpot } from '../../content-lib/core.mjs';
+import type { Content } from '../content/ContentLoader';
 
 const MAX_STARS = 5;
 const PER_STAR = 2;          // 每星警察数
@@ -19,6 +21,7 @@ const CULL_DIST = 65;        // 被甩开超过此距离的警察"跟丢"消散�
 export default class WantedSystem extends Component {
   private scene: THREE.Scene;
   private soldierGltf: any;
+  private content: Content;
   private level = 0;
   private escapeTimer = 0;
   private police: Entity[] = [];
@@ -28,11 +31,12 @@ export default class WantedSystem extends Component {
   private toastEl = document.getElementById('toast')!;
   private toastTimer = 0;
 
-  constructor(scene: THREE.Scene, soldierGltf: any) {
+  constructor(scene: THREE.Scene, soldierGltf: any, content: Content) {
     super();
     this.name = 'WantedSystem';
     this.scene = scene;
     this.soldierGltf = soldierGltf;
+    this.content = content;
   }
 
   get Level() { return this.level; }
@@ -47,6 +51,7 @@ export default class WantedSystem extends Component {
 
   raise(reason: string) {
     if (this.level < MAX_STARS) this.level++;
+    (window as any).__flight?.event('wanted-raise', { level: this.level });
     this.toast(`⭐ 通缉 ${this.level} 星 — ${reason}`);
     this.renderStars();
     this.syncPolice();
@@ -101,9 +106,15 @@ export default class WantedSystem extends Component {
     this.renderStars();
     this.syncPolice();
     this.toast('🚨 BUSTED！被捕 — 罚款后释放');
-    // 送回中央广场
+    // 释放点 = 内容包里的玩家出生点（受校验器保护，不再硬编码坐标——
+    // 曾有真实 bug：硬编码 (0,0)，玩家用编辑器在广场盖了楼，被捕后被传送进楼里卡死）。
+    // 再过一道 findClearSpot 运行时自愈：即使数据坏了也把人放到最近空地。
+    const sp = this.content.scene.spawns.player;
+    const [x, z] = findClearSpot(this.content.blocks, sp[0], sp[2], 1.0);
+    if (x !== sp[0] || z !== sp[2]) console.warn(`[wanted] 出生点被占用，自愈到最近空地 (${x.toFixed(1)},${z.toFixed(1)})`);
+    (window as any).__flight?.event('bust', { respawn: [x, z] });
     const of = this.FindEntity('Player')!.GetComponent('OnFootPlayer');
-    of.activate(new THREE.Vector3(0, 1.2, 0));
+    of.activate(new THREE.Vector3(x, sp[1], z));
   }
 
   Update(t: number): void {
@@ -141,6 +152,7 @@ export default class WantedSystem extends Component {
         this.level--;
         this.renderStars();
         this.syncPolice(false);   // 降星只裁减，绝不在玩家身边补刷警察
+        (window as any).__flight?.event('wanted-drop', { level: this.level });
         this.toast(this.level === 0 ? '✅ 甩掉警察了！通缉解除' : `通缉降为 ${this.level} 星`);
       }
     } else {

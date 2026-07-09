@@ -74,6 +74,7 @@ export default class MissionSystem extends Component {
   private complete() {
     const wanted = this.FindEntity('Wanted')?.GetComponent('WantedSystem');
     wanted?.toast(`✅ 任务完成：${this.cur()!.text}`);
+    (window as any).__flight?.event('mission-complete', { idx: this.idx });
     this.idx++;
     this.wantedPeaked = false;
     this.applyMission();

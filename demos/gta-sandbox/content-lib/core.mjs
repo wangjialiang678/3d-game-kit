@@ -94,6 +94,26 @@ export function validateContent(c) {
   return issues;
 }
 
+/** 点(x,z)是否落在任一建筑内（含 margin 外扩）。运行时自愈与校验共用。 */
+export function insideAnyBlock(blocks, x, z, margin = 0) {
+  return blocks.some((b) =>
+    x > b.x - b.w / 2 - margin && x < b.x + b.w / 2 + margin &&
+    z > b.z - b.d / 2 - margin && z < b.z + b.d / 2 + margin);
+}
+
+/** 找离 (x,z) 最近的空地（螺旋外扩搜索）。所有"放置玩家"的代码都应经过它自愈。 */
+export function findClearSpot(blocks, x, z, margin = 1.0) {
+  if (!insideAnyBlock(blocks, x, z, margin)) return [x, z];
+  for (let r = 2; r <= 60; r += 2) {
+    for (let a = 0; a < 16; a++) {
+      const t = (a / 16) * Math.PI * 2;
+      const cx = x + Math.cos(t) * r, cz = z + Math.sin(t) * r;
+      if (!insideAnyBlock(blocks, cx, cz, margin)) return [cx, cz];
+    }
+  }
+  return [x, z];   // 理论上到不了：整张图都被楼填满
+}
+
 /** 列出所有马路交叉口（网格走廊中线交点）——给编辑器/AI 推荐合法任务点用。 */
 export function roadIntersections(t) {
   const mids = [];

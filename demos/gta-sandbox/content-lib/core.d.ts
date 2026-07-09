@@ -15,3 +15,5 @@ export function mulberry32(seed: number): () => number;
 export function materializeBlocks(t: TownParams): Block[];
 export function validateContent(c: any): Issue[];
 export function roadIntersections(t: TownParams): [number, number][];
+export function insideAnyBlock(blocks: Block[], x: number, z: number, margin?: number): boolean;
+export function findClearSpot(blocks: Block[], x: number, z: number, margin?: number): [number, number];

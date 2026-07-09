@@ -157,7 +157,7 @@ class Game {
 
     // wanted system (G to raise heat, police chase, escape to cool down)
     const wanted = new Entity(); wanted.SetName('Wanted');
-    wanted.AddComponent(new WantedSystem(this.scene, this.assets['soldier']));
+    wanted.AddComponent(new WantedSystem(this.scene, this.assets['soldier'], this.content));
     this.em.Add(wanted);
 
     // mission chain (walk → drive → wanted-and-escape)
@@ -168,6 +168,9 @@ class Game {
     this.em.EndSetup();
     this.scene.add(this.camera);
     try { document.body.requestPointerLock(); } catch { /* headless/autotest 下没有指针锁 */ }
+
+    // 飞行记录仪：常驻黑匣子 + 卡死/穿模看门狗 + F9 导出诊断包
+    import('./debug/FlightRecorder').then(({ default: FR }) => new FR(this));
 
     // P4：按 E 进入可视化编辑器（懒加载；输入框聚焦时不触发）
     document.addEventListener('keydown', async (e) => {

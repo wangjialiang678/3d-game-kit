@@ -57,7 +57,7 @@ export default class Car extends Component {
     });
   }
 
-  enterAsDriver(onfoot: OnFootPlayer) { this.onfoot = onfoot; this.active = true; this.enteredAt = performance.now(); }
+  enterAsDriver(onfoot: OnFootPlayer) { this.onfoot = onfoot; this.active = true; this.enteredAt = performance.now(); (window as any).__flight?.event('enter-car'); }
 
   private exit() {
     this.active = false;
@@ -77,6 +77,7 @@ export default class Car extends Component {
       if (!hit) { exitPos = new THREE.Vector3(this.ground.x + off.x, 0, this.ground.z + off.z); break; }
     }
     if (!exitPos) exitPos = new THREE.Vector3(this.ground.x, 0, this.ground.z); // 全堵死就原地（车顶）
+    (window as any).__flight?.event('exit-car', { at: [+exitPos.x.toFixed(1), +exitPos.z.toFixed(1)] });
     this.onfoot?.activate(exitPos);
   }
 
