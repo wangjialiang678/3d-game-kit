@@ -9,7 +9,7 @@
  *      触发即记事件 + 屏幕横幅提示
  *   3) F9 一键下载诊断包 JSON（含快照环 + 事件流 + 内容包指纹），学员直接把文件发给老师/AI
  */
-import { Input } from '@engine';
+import { EventBus, Input } from '@engine';
 import { insideAnyBlock } from '../../content-lib/core.mjs';
 
 const HZ = 5, KEEP = 600;          // 5Hz × 120s
@@ -27,6 +27,7 @@ export default class FlightRecorder {
   constructor(game: any) {
     this.g = game;
     (window as any).__flight = this;
+    EventBus.tap((event, data) => this.event(event, data));
     this.banner = document.createElement('div');
     this.banner.style.cssText = 'position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:60;display:none;'
       + 'background:#7a2b2b;color:#ffd9d9;padding:8px 18px;border-radius:6px;font:700 14px Arial;';

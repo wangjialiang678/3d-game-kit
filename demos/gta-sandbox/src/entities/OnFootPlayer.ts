@@ -10,9 +10,15 @@ import type { SoldierInstance } from '../util/build';
 
 const CAP_HALF = 0.6, CAP_RADIUS = 0.35, FOOT = CAP_HALF + CAP_RADIUS;
 const FACING_OFFSET = Math.PI;
-const MOUSE = 0.0022;
-const MAX_SPEED = 5.0, ACCEL = MAX_SPEED / 0.09, DECEL = -10;
+const DECEL = -10;
 const TP_DIST = 4.2, TP_PIVOT_Y = 1.45, TP_SIDE = 0.6;
+
+interface PlayerTuning {
+  maxSpeed: number;
+  accelTime: number;
+  jumpVelocity: number;
+  mouseSpeed: number;
+}
 
 export default class OnFootPlayer extends Component {
   private camera: THREE.PerspectiveCamera;
@@ -26,7 +32,9 @@ export default class OnFootPlayer extends Component {
   private current = 'Idle';
 
   public active = true;
-  private yaw = 0; private pitch = 0.05; private isLocked = false;
+  private tuning: PlayerTuning;
+
+  private yaw = 0; private pitch = 0.05;
   private speed = new THREE.Vector3();
   private vVel = 0; private grounded = false;
   private modelYaw = 0;
@@ -36,10 +44,11 @@ export default class OnFootPlayer extends Component {
   private right = new THREE.Vector3();
   private tmp = new THREE.Vector3();
 
-  constructor(camera: THREE.PerspectiveCamera, physics: Physics, scene: THREE.Scene, soldier: SoldierInstance) {
+  constructor(camera: THREE.PerspectiveCamera, physics: Physics, scene: THREE.Scene, soldier: SoldierInstance, tuning: PlayerTuning) {
     super();
     this.name = 'OnFootPlayer';
     this.camera = camera; this.physics = physics; this.scene = scene; this.soldier = soldier;
+    this.tuning = tuning;
   }
 
   get Yaw() { return this.yaw; }
@@ -56,8 +65,7 @@ export default class OnFootPlayer extends Component {
     this.actions['Idle']?.play();
 
     Input.AddMouseMoveListner(this.onMouse);
-    document.addEventListener('pointerlockchange', () => { this.isLocked = !!document.pointerLockElement; });
-    Input.AddClickListner(() => { if (!this.isLocked) document.body.requestPointerLock(); });
+    Input.AddClickListner(() => { if (!Input.PointerLocked) Input.RequestPointerLock(); });
     Input.AddKeyDownListner((e: KeyboardEvent) => {
       if (e.repeat || !this.active) return;
       if (e.code === 'KeyF') this.tryEnterCar();
@@ -66,9 +74,9 @@ export default class OnFootPlayer extends Component {
   }
 
   private onMouse = (e: MouseEvent) => {
-    if (!this.isLocked || !this.active) return;
-    this.yaw -= e.movementX * MOUSE;
-    this.pitch -= e.movementY * MOUSE;
+    if (!Input.PointerLocked || !this.active) return;
+    this.yaw -= e.movementX * this.tuning.mouseSpeed;
+    this.pitch -= e.movementY * this.tuning.mouseSpeed;
     this.pitch = Math.max(-1.1, Math.min(1.1, this.pitch));
   };
 
@@ -113,13 +121,13 @@ export default class OnFootPlayer extends Component {
     const dir = this.tmp.copy(this.fwd).multiplyScalar(f).addScaledVector(this.right, r);
     if (dir.lengthSq() > 0) dir.normalize();
     this.speed.addScaledVector(this.speed, DECEL * t);
-    this.speed.addScaledVector(dir, ACCEL * t);
-    if (this.speed.length() > MAX_SPEED) this.speed.setLength(MAX_SPEED);
+    this.speed.addScaledVector(dir, (this.tuning.maxSpeed / this.tuning.accelTime) * t);
+    if (this.speed.length() > this.tuning.maxSpeed) this.speed.setLength(this.tuning.maxSpeed);
 
     this.grounded = this.character.controller.computedGrounded();
     if (this.grounded && this.vVel < 0) this.vVel = -1;
     this.vVel += -20 * t;
-    if (Input.GetKeyDown('Space') && this.grounded) this.vVel = 6;
+    if (Input.GetKeyDown('Space') && this.grounded) this.vVel = this.tuning.jumpVelocity;
 
     this.character.controller.computeColliderMovement(this.character.collider, { x: this.speed.x * t, y: this.vVel * t, z: this.speed.z * t });
     const mv = this.character.controller.computedMovement();

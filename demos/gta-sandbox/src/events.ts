@@ -1,11 +1,7 @@
-/** 极简事件总线：玩法系统发事件，RuleSystem（和飞行记录仪）订阅。 */
-type Handler = (data?: any) => void;
-const handlers: Record<string, Handler[]> = {};
+/** GTA demo 事件总线：合法事件名来自 content-lib/events.mjs。 */
+import { EventBus } from '@engine';
+import { EVENTS } from '../content-lib/events.mjs';
 
-export const Bus = {
-  on(event: string, h: Handler) { (handlers[event] ??= []).push(h); },
-  emit(event: string, data?: any) {
-    (window as any).__flight?.event(event, data);   // 所有事件自动进黑匣子
-    for (const h of handlers[event] ?? []) h(data);
-  },
-};
+EventBus.register(...EVENTS);
+
+export const Bus = EventBus;

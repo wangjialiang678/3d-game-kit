@@ -9,8 +9,11 @@
  * 纯函数、无 DOM、无渲染依赖。
  */
 import { insideAnyBlock } from './core.mjs';
+import { EVENTS } from './events.mjs';
 
-export const EVENTS = ['busted', 'wanted-raise', 'wanted-drop', 'mission-complete', 'enter-car', 'exit-car'];
+export { EVENTS };
+// toast 是呈现事件，同时 toast 动作也会发 toast；禁止作为规则触发源，避免数据写出 toast→toast 递归。
+export const RULE_TRIGGER_EVENTS = EVENTS.filter((e) => e !== 'toast');
 
 /** 命名点位解析：规则里只允许引用内容包点位，不允许裸坐标。 */
 export function resolvePoint(name, content) {
@@ -51,7 +54,7 @@ export function validateRules(rulesPack, content) {
   const issues = [];
   (rulesPack.rules ?? []).forEach((r, i) => {
     const tag = `rules[${i}]`;
-    if (!EVENTS.includes(r.on)) issues.push({ where: tag, message: `未知事件 "${r.on}"（可用：${EVENTS.join('/')}）` });
+    if (!RULE_TRIGGER_EVENTS.includes(r.on)) issues.push({ where: tag, message: `未知规则触发事件 "${r.on}"（可用：${RULE_TRIGGER_EVENTS.join('/')}；toast 是呈现事件，不能触发规则）` });
     if (!Array.isArray(r.do) || !r.do.length) issues.push({ where: tag, message: '缺少 do 动作列表' });
     (r.do ?? []).forEach((a, j) => {
       const spec = ACTIONS[a.action];

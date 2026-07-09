@@ -9,3 +9,5 @@ export { FiniteStateMachine, State } from './FiniteStateMachine';
 export { default as Physics, initPhysics } from './Physics';
 export type { Character, RayHit } from './Physics';
 export { default as Input } from './Input';
+export { EventBus } from './EventBus';
+export type { Handler as EventHandler } from './EventBus';

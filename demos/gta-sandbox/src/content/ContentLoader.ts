@@ -3,9 +3,9 @@
  * 核心逻辑（物化/校验）在 ../../content-lib/core.mjs —— 与 Node CLI 编辑工具共用同一实现。
  */
 import { materializeBlocks } from '../../content-lib/core.mjs';
-import type { TownParams, Block } from '../../content-lib/core';
+import type { TownParams, Block, TuningContent } from '../../content-lib/core';
 
-export type { TownParams, Block };
+export type { TownParams, Block, TuningContent };
 
 export interface SceneContent {
   name: string;
@@ -34,17 +34,21 @@ export interface Content {
   blocks: Block[];
   /** ECA 规则包（事件-条件-动作，封闭动作词汇表） */
   rules: { version: number; rules: any[] };
+  /** 策划调参表（速度/警力/任务半径等可调数值） */
+  tuning: TuningContent;
 }
 
-export async function loadContent(sceneUrl: string, missionsUrl: string, rulesUrl: string): Promise<Content> {
-  const [sceneRes, missionsRes, rulesRes] = await Promise.all([fetch(sceneUrl), fetch(missionsUrl), fetch(rulesUrl)]);
+export async function loadContent(sceneUrl: string, missionsUrl: string, rulesUrl: string, tuningUrl: string): Promise<Content> {
+  const [sceneRes, missionsRes, rulesRes, tuningRes] = await Promise.all([fetch(sceneUrl), fetch(missionsUrl), fetch(rulesUrl), fetch(tuningUrl)]);
   if (!sceneRes.ok) throw new Error(`无法加载 ${sceneUrl}: HTTP ${sceneRes.status}`);
   if (!missionsRes.ok) throw new Error(`无法加载 ${missionsUrl}: HTTP ${missionsRes.status}`);
   if (!rulesRes.ok) throw new Error(`无法加载 ${rulesUrl}: HTTP ${rulesRes.status}`);
+  if (!tuningRes.ok) throw new Error(`无法加载 ${tuningUrl}: HTTP ${tuningRes.status}`);
   const scene = (await sceneRes.json()) as SceneContent;
   const missionsPack = (await missionsRes.json()) as { missions: MissionData[] };
   const rules = await rulesRes.json();
+  const tuning = (await tuningRes.json()) as TuningContent;
   // 显式 blocks 优先（编辑器产物）；否则由 town 种子物化
   const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
-  return { scene, missions: missionsPack.missions ?? [], blocks, rules };
+  return { scene, missions: missionsPack.missions ?? [], blocks, rules, tuning };
 }

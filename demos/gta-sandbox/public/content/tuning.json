@@ -1,0 +1,15 @@
+{
+  "_comment": "策划调参表。数值改这里，刷新即生效；加载时做范围与关系校验。",
+  "player": { "maxSpeed": 5.0, "accelTime": 0.09, "jumpVelocity": 6, "mouseSpeed": 0.0022 },
+  "car": { "maxSpeed": 17, "accel": 13, "brake": 24, "reverseMax": 6, "steer": 1.7 },
+  "police": {
+    "speed": 4.4,
+    "perStar": 2,
+    "escapeDist": 45,
+    "escapeTime": 5,
+    "bustDist": 1.8,
+    "cullDist": 65,
+    "spawnRadius": 30
+  },
+  "mission": { "completeRadius": 3.5 }
+}

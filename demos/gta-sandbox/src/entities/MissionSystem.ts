@@ -16,24 +16,25 @@ interface Mission {
 }
 // P1：任务不再硬编码，由内容包 public/content/missions.json 提供（加载时已做"任务点不在建筑里"校验）。
 
+interface MissionTuning {
+  completeRadius: number;
+}
+
 export default class MissionSystem extends Component {
   private scene: THREE.Scene;
-  private camera: THREE.Camera;
   private marker = buildMarker();
   private idx = 0;
   private wantedPeaked = false;
-  private objEl = document.querySelector('#mission .obj') as HTMLElement;
-  private navEl = document.querySelector('#mission .nav') as HTMLElement;
   private time = 0;
-  private camDir = new THREE.Vector3();
   private missions: Mission[];
+  private tuning: MissionTuning;
 
-  constructor(scene: THREE.Scene, camera: THREE.Camera, missions: Mission[]) {
+  constructor(scene: THREE.Scene, missions: Mission[], tuning: MissionTuning) {
     super();
     this.name = 'MissionSystem';
     this.scene = scene;
-    this.camera = camera;
     this.missions = missions;
+    this.tuning = tuning;
   }
 
   Initialize(): void {
@@ -43,38 +44,32 @@ export default class MissionSystem extends Component {
 
   private cur(): Mission | undefined { return this.missions[this.idx]; }
 
+  get CurrentText(): string {
+    return this.cur()?.text ?? '🎉 全部任务完成！自由游览小镇吧';
+  }
+
+  get CurrentTarget(): [number, number] | null {
+    return this.cur()?.pos ?? null;
+  }
+
   private applyMission() {
     const m = this.cur();
     if (!m) {
-      this.objEl.textContent = '🎉 全部任务完成！自由游览小镇吧';
       this.marker.visible = false;
+      Bus.emit('mission-changed', { text: this.CurrentText });
       return;
     }
-    this.objEl.textContent = m.text;
     if (m.pos) {
       this.marker.visible = true;
       this.marker.position.set(m.pos[0], 25, m.pos[1]);
     } else {
       this.marker.visible = false;
-      this.navEl.textContent = '';
     }
-  }
-
-  /** HUD 导航：目标的相机相对方向箭头 + 距离。玩家不可能再"找不到目标"。 */
-  private static ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
-  private updateNav(playerPos: THREE.Vector3, m: Mission) {
-    if (!m.pos) { this.navEl.textContent = ''; return; }
-    const dx = m.pos[0] - playerPos.x, dz = m.pos[1] - playerPos.z;
-    const dist = Math.hypot(dx, dz);
-    this.camera.getWorldDirection(this.camDir);
-    const rel = Math.atan2(dx, dz) - Math.atan2(this.camDir.x, this.camDir.z);
-    const idx = ((Math.round(-rel / (Math.PI / 4)) % 8) + 8) % 8;
-    this.navEl.textContent = `${MissionSystem.ARROWS[idx]} 目标 ${Math.round(dist)} m`;
+    Bus.emit('mission-changed', { text: this.CurrentText });
   }
 
   private complete() {
-    const wanted = this.FindEntity('Wanted')?.GetComponent('WantedSystem');
-    wanted?.toast(`✅ 任务完成：${this.cur()!.text}`);
+    Bus.emit('toast', { text: `✅ 任务完成：${this.cur()!.text}` });
     Bus.emit('mission-complete', { idx: this.idx });
     this.idx++;
     this.wantedPeaked = false;
@@ -93,11 +88,10 @@ export default class MissionSystem extends Component {
 
     const car = this.FindEntity('Car')?.GetComponent('Car');
     const playerPos: THREE.Vector3 = car?.Active ? car.Position : (this.FindEntity('Player')!.Position as THREE.Vector3);
-    this.updateNav(playerPos, m);
 
     if (m.pos) {
       const dx = playerPos.x - m.pos[0], dz = playerPos.z - m.pos[1];
-      const near = Math.hypot(dx, dz) < 3.5;
+      const near = Math.hypot(dx, dz) < this.tuning.completeRadius;
       if (near && (!m.needCar || car?.Active)) this.complete();
     } else if (m.special === 'wanted') {
       const wanted = this.FindEntity('Wanted')?.GetComponent('WantedSystem');

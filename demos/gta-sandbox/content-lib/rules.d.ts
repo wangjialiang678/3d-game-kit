@@ -6,6 +6,7 @@ export interface Rule { on: string; if?: { minLevel?: number }; do: RuleAction[]
 export interface RulesPack { version: number; rules: Rule[]; }
 
 export const EVENTS: string[];
+export const RULE_TRIGGER_EVENTS: string[];
 export const ACTIONS: Record<string, {
   validate(params: any, content: any): string | null;
   simulate(params: any, content: any, state: any): void;

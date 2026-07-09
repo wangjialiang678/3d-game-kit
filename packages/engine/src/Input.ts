@@ -11,6 +11,7 @@ class InputManager {
   private mouseUp: Handler[] = [];
   private click: Handler[] = [];
   private keyDown: Handler[] = [];
+  private pointerLocked = false;
 
   constructor() {
     document.addEventListener('keydown', (e) => {
@@ -27,11 +28,22 @@ class InputManager {
     // Clear held keys when focus / pointer-lock is lost — otherwise a missed
     // keyup leaves a key "stuck down" and the character keeps moving on its own.
     window.addEventListener('blur', () => { this.keys = {}; });
-    document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement) this.keys = {}; });
+    document.addEventListener('pointerlockchange', () => {
+      this.pointerLocked = !!document.pointerLockElement;
+      if (!this.pointerLocked) this.keys = {};
+    });
   }
 
   GetKeyDown(code: string): number {
     return this.keys[code] ? 1 : 0;
+  }
+
+  get PointerLocked(): boolean {
+    return this.pointerLocked;
+  }
+
+  RequestPointerLock(): void {
+    document.body.requestPointerLock();
   }
 
   /** 编程式按键（测试机器人/录像回放用）——走与真实键盘完全相同的路径。 */

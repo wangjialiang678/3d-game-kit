@@ -94,6 +94,62 @@ export function validateContent(c) {
   return issues;
 }
 
+const TUNING_SPEC = {
+  player: ['maxSpeed', 'accelTime', 'jumpVelocity', 'mouseSpeed'],
+  car: ['maxSpeed', 'accel', 'brake', 'reverseMax', 'steer'],
+  police: ['speed', 'perStar', 'escapeDist', 'escapeTime', 'bustDist', 'cullDist', 'spawnRadius'],
+  mission: ['completeRadius'],
+};
+
+function isFiniteNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/**
+ * 策划调参表校验：先拦结构/范围，再拦会破坏可玩性的跨项关系。
+ * 这些关系是护栏，不是调平衡：防止"警察比车还快"这类保存后必坏的内容进入游戏。
+ */
+export function validateTuning(t) {
+  const issues = [];
+  if (!t || typeof t !== 'object') return [{ where: 'tuning', message: '缺少 tuning 调参表' }];
+
+  for (const [section, fields] of Object.entries(TUNING_SPEC)) {
+    const obj = t[section];
+    if (!obj || typeof obj !== 'object') {
+      issues.push({ where: `tuning.${section}`, message: `缺少 ${section} 配置段` });
+      continue;
+    }
+    for (const field of fields) {
+      const where = `tuning.${section}.${field}`;
+      const value = obj[field];
+      if (!isFiniteNumber(value)) issues.push({ where, message: `${field} 必须是数字` });
+      else if (value <= 0) issues.push({ where, message: `${field} 必须为正数` });
+    }
+  }
+
+  if (issues.length) return issues;
+
+  if (t.car.maxSpeed < t.police.speed * 2) {
+    issues.push({
+      where: 'tuning.car.maxSpeed',
+      message: `车必须显著快于警察，否则开车甩脱不可玩：car.maxSpeed=${t.car.maxSpeed} < police.speed*2=${t.police.speed * 2}`,
+    });
+  }
+  if (t.player.maxSpeed <= t.police.speed) {
+    issues.push({
+      where: 'tuning.player.maxSpeed',
+      message: `步行必须能拉开警察距离，否则被抓是必然不是失误：player.maxSpeed=${t.player.maxSpeed} <= police.speed=${t.police.speed}`,
+    });
+  }
+  if (t.police.escapeDist >= t.police.cullDist) {
+    issues.push({
+      where: 'tuning.police.escapeDist',
+      message: `甩脱距离必须小于警察消散距离，否则先消散就无法稳定触发跟丢：escapeDist=${t.police.escapeDist} >= cullDist=${t.police.cullDist}`,
+    });
+  }
+  return issues;
+}
+
 /** 点(x,z)是否落在任一建筑内（含 margin 外扩）。运行时自愈与校验共用。 */
 export function insideAnyBlock(blocks, x, z, margin = 0) {
   return blocks.some((b) =>

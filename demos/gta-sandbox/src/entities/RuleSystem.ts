@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { Component } from '@engine';
 import { Bus } from '../events';
-import { EVENTS, evalCondition, resolvePoint } from '../../content-lib/rules.mjs';
+import { RULE_TRIGGER_EVENTS, evalCondition, resolvePoint } from '../../content-lib/rules.mjs';
 import { findClearSpot } from '../../content-lib/core.mjs';
 import type { Content } from '../content/ContentLoader';
 import type { RulesPack } from '../../content-lib/rules';
@@ -24,7 +24,7 @@ export default class RuleSystem extends Component {
   }
 
   Initialize(): void {
-    for (const ev of EVENTS) {
+    for (const ev of RULE_TRIGGER_EVENTS) {
       Bus.on(ev, (data) => this.run(ev, data));
     }
   }
@@ -48,7 +48,7 @@ export default class RuleSystem extends Component {
         break;
       }
       case 'toast':
-        this.FindEntity('Wanted')?.GetComponent('WantedSystem')?.toast(a.text);
+        Bus.emit('toast', { text: a.text });
         break;
       default:
         console.error(`[rules] 未注册的动作 ${a.action}（词汇表之外，已忽略）`);

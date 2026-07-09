@@ -11,12 +11,14 @@ import OnFootPlayer from './entities/OnFootPlayer';
 import Car from './entities/Car';
 import WantedSystem from './entities/WantedSystem';
 import MissionSystem from './entities/MissionSystem';
+import HudView from './view/HudView';
 import { cloneSoldier, buildCar } from './util/build';
 import { loadContent, type Content } from './content/ContentLoader';
-import { validateContent } from '../content-lib/core.mjs';
+import { validateContent, validateTuning } from '../content-lib/core.mjs';
 import { validateRules } from '../content-lib/rules.mjs';
 import RuleSystem from './entities/RuleSystem';
 import type { Issue } from '../content-lib/core';
+import FlightRecorder from './debug/FlightRecorder';
 
 class Game {
   private renderer!: THREE.WebGLRenderer;
@@ -37,7 +39,7 @@ class Game {
 
     // ---- P1：加载内容包并校验（校验不过就不开局，红字报错） ----
     try {
-      this.content = await loadContent('/content/scene.json', '/content/missions.json', '/content/rules.json');
+      this.content = await loadContent('/content/scene.json', '/content/missions.json', '/content/rules.json', '/content/tuning.json');
     } catch (e) {
       this.showContentErrors([{ where: 'content', message: String(e) }]);
       return;
@@ -45,6 +47,7 @@ class Game {
     const issues = [
       ...validateContent(this.content),
       ...validateRules(this.content.rules, this.content),   // L0：规则包也一样先校验再开局
+      ...validateTuning(this.content.tuning),
     ];
     if (issues.length) { this.showContentErrors(issues); return; }
 
@@ -148,7 +151,7 @@ class Game {
     // player on foot（出生点来自内容包）
     const sp = this.content.scene.spawns;
     const player = new Entity(); player.SetName('Player');
-    player.AddComponent(new OnFootPlayer(this.camera, this.physics, this.scene, cloneSoldier(this.assets['soldier'])));
+    player.AddComponent(new OnFootPlayer(this.camera, this.physics, this.scene, cloneSoldier(this.assets['soldier']), this.content.tuning.player));
     player.SetPosition(new THREE.Vector3(...sp.player));
     this.em.Add(player);
 
@@ -157,12 +160,13 @@ class Game {
     car.AddComponent(new Car(
       this.camera, this.physics, this.scene, buildCar(0x2f6fb0),
       new THREE.Vector3(...sp.car.pos), (sp.car.headingDeg * Math.PI) / 180,
+      this.content.tuning.car,
     ));
     this.em.Add(car);
 
     // wanted system (G to raise heat, police chase, escape to cool down)
     const wanted = new Entity(); wanted.SetName('Wanted');
-    wanted.AddComponent(new WantedSystem(this.scene, this.assets['soldier'], this.content));
+    wanted.AddComponent(new WantedSystem(this.scene, this.assets['soldier'], this.content.tuning.police));
     this.em.Add(wanted);
 
     // ECA 规则系统（数据驱动的玩法逻辑：被捕流程等）
@@ -172,15 +176,19 @@ class Game {
 
     // mission chain (walk → drive → wanted-and-escape)
     const missions = new Entity(); missions.SetName('Missions');
-    missions.AddComponent(new MissionSystem(this.scene, this.camera, this.content.missions));
+    missions.AddComponent(new MissionSystem(this.scene, this.content.missions, this.content.tuning.mission));
     this.em.Add(missions);
+
+    const hud = new Entity(); hud.SetName('Hud');
+    hud.AddComponent(new HudView(this.camera));
+    this.em.Add(hud);
+
+    // 飞行记录仪先安装 EventBus tap，再初始化各系统，避免漏掉 Initialize 阶段的 mission-changed 等事件。
+    new FlightRecorder(this);
 
     this.em.EndSetup();
     this.scene.add(this.camera);
     try { document.body.requestPointerLock(); } catch { /* headless/autotest 下没有指针锁 */ }
-
-    // 飞行记录仪：常驻黑匣子 + 卡死/穿模看门狗 + F9 导出诊断包
-    import('./debug/FlightRecorder').then(({ default: FR }) => new FR(this));
 
     // P4：按 E 进入可视化编辑器（懒加载；输入框聚焦时不触发）
     document.addEventListener('keydown', async (e) => {
@@ -193,22 +201,6 @@ class Game {
     });
     this.running = true; this.clock.start();
     this.renderer.setAnimationLoop(this.loop);
-  }
-
-  private prompt = document.getElementById('prompt') as HTMLElement;
-  private speedEl = document.getElementById('speed') as HTMLElement;
-  private updatePrompt() {
-    const onfoot = this.em.Get('Player')?.GetComponent('OnFootPlayer');
-    const car = this.em.Get('Car')?.GetComponent('Car');
-    if (!onfoot || !car) return;
-    if (car.Active) { this.prompt.style.display = 'block'; this.prompt.innerHTML = '按 <b>F</b> 下车'; }
-    else if (onfoot.active && onfoot.parent!.Position.distanceTo(car.Position) < 5.0) { this.prompt.style.display = 'block'; this.prompt.innerHTML = '按 <b>F</b> 上车'; }
-    else this.prompt.style.display = 'none';
-    // speedometer while driving
-    if (car.Active) {
-      this.speedEl.style.display = 'block';
-      this.speedEl.innerHTML = `${Math.abs(Math.round(car.Speed * 3.6))} <small>km/h</small>`;
-    } else this.speedEl.style.display = 'none';
   }
 
   // 固定步长累加器：低帧率（无头/慢机器）时每帧补跑多个逻辑子步，
@@ -228,7 +220,6 @@ class Game {
       n++;
     }
     if (n === Game.MAX_SUBSTEPS) this.acc = 0;   // 极端卡顿时丢弃积压，避免螺旋死亡
-    this.updatePrompt();
     this.renderer.render(this.scene, this.camera);
   };
 }

@@ -14,7 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { materializeBlocks, validateContent, insideAnyBlock } from '../content-lib/core.mjs';
+import { materializeBlocks, validateContent, validateTuning, insideAnyBlock } from '../content-lib/core.mjs';
 import { validateRules, simulateEvent, resolvePoint } from '../content-lib/rules.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -24,8 +24,9 @@ const t0 = performance.now();
 const scene = read('scene.json');
 const missionsPack = read('missions.json');
 const rules = read('rules.json');
+const tuning = read('tuning.json');
 const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
-const content = { scene, missions: missionsPack.missions, blocks, rules };
+const content = { scene, missions: missionsPack.missions, blocks, rules, tuning };
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -34,9 +35,9 @@ const check = (name, ok, detail = '') => {
 };
 
 console.log('===== L0 静态校验 =====');
-const l0 = [...validateContent(content), ...validateRules(rules, content)];
+const l0 = [...validateContent(content), ...validateRules(rules, content), ...validateTuning(tuning)];
 for (const i of l0) console.log(`  ⛔ [${i.where}] ${i.message}`);
-check('内容包 + 规则包静态校验', l0.length === 0, `${blocks.length} 楼 / ${content.missions.length} 任务 / ${rules.rules.length} 规则`);
+check('内容包 + 规则包 + tuning 静态校验', l0.length === 0, `${blocks.length} 楼 / ${content.missions.length} 任务 / ${rules.rules.length} 规则`);
 
 console.log('\n===== L1 抽象模拟（无渲染） =====');
 

@@ -7,7 +7,6 @@ import * as THREE from 'three';
 import { Component } from '@engine';
 import type { SoldierInstance } from '../util/build';
 
-const SPEED = 4.4;                // 略慢于玩家跑速(5.0)，明显慢于车
 const FACING_OFFSET = Math.PI;
 
 export default class PoliceNPC extends Component {
@@ -17,12 +16,14 @@ export default class PoliceNPC extends Component {
   private actions: Record<string, THREE.AnimationAction> = {};
   private current = '';
   private tmp = new THREE.Vector3();
+  private speed: number;
 
-  constructor(soldier: SoldierInstance, scene: THREE.Scene) {
+  constructor(soldier: SoldierInstance, scene: THREE.Scene, speed: number) {
     super();
     this.name = 'PoliceNPC';
     this.soldier = soldier;
     this.scene = scene;
+    this.speed = speed;
   }
 
   get Position(): THREE.Vector3 { return this.soldier.model.position; }
@@ -61,7 +62,7 @@ export default class PoliceNPC extends Component {
 
     if (dist > 1.2) {
       this.tmp.normalize();
-      m.position.addScaledVector(this.tmp, SPEED * t);
+      m.position.addScaledVector(this.tmp, this.speed * t);
       m.rotation.y = Math.atan2(this.tmp.x, this.tmp.z) + FACING_OFFSET;
       this.setAnim('Run');
     } else {

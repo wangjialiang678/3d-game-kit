@@ -10,14 +10,23 @@ import { Bus } from '../events';
 
 const HALF = new THREE.Vector3(0.95, 0.6, 2.0);
 const BODY_Y = 0.7;
-const MAX_SPEED = 17, ACCEL = 13, BRAKE = 24, REVERSE_MAX = 6, FRICTION = 0.9, STEER = 1.7;
+const FRICTION = 0.9;
 const CAM_DIST = 8.5, CAM_HEIGHT = 4.0;
+
+interface CarTuning {
+  maxSpeed: number;
+  accel: number;
+  brake: number;
+  reverseMax: number;
+  steer: number;
+}
 
 export default class Car extends Component {
   private camera: THREE.PerspectiveCamera;
   private physics: Physics;
   private scene: THREE.Scene;
   private model: THREE.Group;
+  private tuning: CarTuning;
   private body: any; private collider: any;
 
   public active = false;
@@ -31,11 +40,12 @@ export default class Car extends Component {
   private right = new THREE.Vector3();
   private tmp = new THREE.Vector3();
 
-  constructor(camera: THREE.PerspectiveCamera, physics: Physics, scene: THREE.Scene, model: THREE.Group, spawn: THREE.Vector3, heading = 0) {
+  constructor(camera: THREE.PerspectiveCamera, physics: Physics, scene: THREE.Scene, model: THREE.Group, spawn: THREE.Vector3, heading: number, tuning: CarTuning) {
     super();
     this.name = 'Car';
     this.camera = camera; this.physics = physics; this.scene = scene; this.model = model;
     this.ground.copy(spawn); this.heading = heading;
+    this.tuning = tuning;
   }
 
   get Position(): THREE.Vector3 { return this.ground; }
@@ -92,15 +102,15 @@ export default class Car extends Component {
     this.updateVectors();
 
     const throttle = Input.GetKeyDown('KeyW') - Input.GetKeyDown('KeyS');
-    if (throttle > 0) this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * t);
-    else if (throttle < 0) this.speed = Math.max(-REVERSE_MAX, this.speed - BRAKE * t);
+    if (throttle > 0) this.speed = Math.min(this.tuning.maxSpeed, this.speed + this.tuning.accel * t);
+    else if (throttle < 0) this.speed = Math.max(-this.tuning.reverseMax, this.speed - this.tuning.brake * t);
     else this.speed *= Math.pow(FRICTION, t * 60);
     if (Math.abs(this.speed) < 0.05) this.speed = 0;
 
     // steering (only while rolling; turn rate scales with speed)
     const steer = Input.GetKeyDown('KeyA') - Input.GetKeyDown('KeyD');
     const speedFactor = Math.min(1, Math.abs(this.speed) / 4);
-    this.heading += steer * STEER * t * speedFactor * Math.sign(this.speed || 1);
+    this.heading += steer * this.tuning.steer * t * speedFactor * Math.sign(this.speed || 1);
 
     // forward raycast — stop before hitting a wall/building
     if (this.speed !== 0) {
