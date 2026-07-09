@@ -55,9 +55,27 @@ export default class HudView extends Component {
   }
 
   private playerGroundPos(): THREE.Vector3 | null {
-    const car = this.FindEntity('Car')?.GetComponent('Car');
+    const car = this.activeCar();
     if (car?.Active) return car.Position;
     return (this.FindEntity('Player')?.Position as THREE.Vector3 | undefined) ?? null;
+  }
+
+  private cars(): any[] {
+    return this.parent!.parent!.GetAll((e) => !!e.GetComponent('Car')).map((e) => e.GetComponent('Car'));
+  }
+
+  private activeCar(): any | null {
+    return this.cars().find((car) => car.Active) ?? null;
+  }
+
+  private nearestCar(pos: THREE.Vector3): any | null {
+    let best: any = null;
+    let bestDist = Infinity;
+    for (const car of this.cars()) {
+      const d = pos.distanceTo(car.Position);
+      if (d < bestDist) { best = car; bestDist = d; }
+    }
+    return best;
   }
 
   /** HUD 导航：目标的相机相对方向箭头 + 距离。玩家不可能再"找不到目标"。 */
@@ -73,21 +91,22 @@ export default class HudView extends Component {
 
   private updatePrompt() {
     const onfoot = this.FindEntity('Player')?.GetComponent('OnFootPlayer');
-    const car = this.FindEntity('Car')?.GetComponent('Car');
-    if (!onfoot || !car) return;
-    if (car.Active) {
+    if (!onfoot) return;
+    const activeCar = this.activeCar();
+    const nearestCar = this.nearestCar(onfoot.parent!.Position);
+    if (activeCar) {
       this.setStyle('promptDisplay', this.promptEl, 'display', 'block');
       this.setHtml('promptHtml', this.promptEl, '按 <b>F</b> 下车');
-    } else if (onfoot.active && onfoot.parent!.Position.distanceTo(car.Position) < 5.0) {
+    } else if (onfoot.active && nearestCar && onfoot.parent!.Position.distanceTo(nearestCar.Position) < 5.0) {
       this.setStyle('promptDisplay', this.promptEl, 'display', 'block');
       this.setHtml('promptHtml', this.promptEl, '按 <b>F</b> 上车');
     } else {
       this.setStyle('promptDisplay', this.promptEl, 'display', 'none');
     }
 
-    if (car.Active) {
+    if (activeCar) {
       this.setStyle('speedDisplay', this.speedEl, 'display', 'block');
-      this.setHtml('speedHtml', this.speedEl, `${Math.abs(Math.round(car.Speed * 3.6))} <small>km/h</small>`);
+      this.setHtml('speedHtml', this.speedEl, `${Math.abs(Math.round(activeCar.Speed * 3.6))} <small>km/h</small>`);
     } else {
       this.setStyle('speedDisplay', this.speedEl, 'display', 'none');
     }

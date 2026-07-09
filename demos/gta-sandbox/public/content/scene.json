@@ -38,6 +38,35 @@
       "headingDeg": 180
     }
   },
+  "prefabs": {
+    "_comment": "预制体=实体的组成配方。世界实体进这里；系统单例(Wanted/Missions等)不进。",
+    "player": {
+      "controller": "OnFootPlayer",
+      "model": "soldier"
+    },
+    "car": {
+      "controller": "Car",
+      "model": "procedural-car",
+      "color": "#2f6fb0"
+    },
+    "police": {
+      "controller": "PoliceNPC",
+      "model": "soldier",
+      "tint": "#2a4bd7"
+    }
+  },
+  "entities": [
+    {
+      "prefab": "player",
+      "name": "Player",
+      "at": "spawns.player"
+    },
+    {
+      "prefab": "car",
+      "name": "Car",
+      "at": "spawns.car"
+    }
+  ],
   "assets": {
     "soldier": "/assets/characters/Soldier.glb",
     "sky": "/assets/sky/kloofendal_48d_partly_cloudy_puresky.hdr"

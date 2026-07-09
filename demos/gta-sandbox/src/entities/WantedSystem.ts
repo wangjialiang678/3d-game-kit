@@ -6,9 +6,9 @@
  */
 import * as THREE from 'three';
 import { Component, Input, Entity } from '@engine';
-import PoliceNPC from './PoliceNPC';
-import { cloneSoldier } from '../util/build';
 import { Bus } from '../events';
+import { mulberry32 } from '../../content-lib/core.mjs';
+import type PrefabRegistry from '../game/PrefabRegistry';
 
 const MAX_STARS = 5;
 
@@ -23,20 +23,20 @@ interface PoliceTuning {
 }
 
 export default class WantedSystem extends Component {
-  private scene: THREE.Scene;
-  private soldierGltf: any;
+  private prefabs: PrefabRegistry;
   private tuning: PoliceTuning;
   private level = 0;
   private escapeTimer = 0;
   private police: Entity[] = [];
   private spawnSeq = 0;
+  private rng: () => number;
 
-  constructor(scene: THREE.Scene, soldierGltf: any, tuning: PoliceTuning) {
+  constructor(prefabs: PrefabRegistry, tuning: PoliceTuning, seed: number) {
     super();
     this.name = 'WantedSystem';
-    this.scene = scene;
-    this.soldierGltf = soldierGltf;
+    this.prefabs = prefabs;
     this.tuning = tuning;
+    this.rng = mulberry32(seed);
   }
 
   get Level() { return this.level; }
@@ -59,8 +59,17 @@ export default class WantedSystem extends Component {
 
   private em() { return (this.parent as any).parent; }
 
+  setSeed(seed: number): void {
+    this.rng = mulberry32(seed);
+  }
+
+  private activeCar(): any | null {
+    const cars = this.parent!.parent!.GetAll((e) => !!e.GetComponent('Car')).map((e) => e.GetComponent('Car'));
+    return cars.find((car) => car.Active) ?? null;
+  }
+
   private playerGroundPos(): THREE.Vector3 {
-    const car = this.FindEntity('Car')?.GetComponent('Car');
+    const car = this.activeCar();
     if (car?.Active) return car.Position;
     return this.FindEntity('Player')!.Position as THREE.Vector3;
   }
@@ -71,7 +80,7 @@ export default class WantedSystem extends Component {
     const want = this.level * this.tuning.perStar;
     const p = this.playerGroundPos();
     while (allowSpawn && this.police.length < want) {
-      const ang = Math.random() * Math.PI * 2;
+      const ang = this.rng() * Math.PI * 2;
       const spawn = new THREE.Vector3(
         p.x + Math.cos(ang) * this.tuning.spawnRadius,
         0,
@@ -79,10 +88,7 @@ export default class WantedSystem extends Component {
       );
       spawn.x = Math.max(-70, Math.min(70, spawn.x));
       spawn.z = Math.max(-70, Math.min(70, spawn.z));
-      const e = new Entity();
-      e.SetName(`Police${this.spawnSeq++}`);
-      e.SetPosition(spawn);
-      e.AddComponent(new PoliceNPC(cloneSoldier(this.soldierGltf, 0x2a4bd7), this.scene, this.tuning.speed));
+      const e = this.prefabs.spawn('police', `Police${this.spawnSeq++}`, spawn);
       this.em().Add(e);       // EndSetup 之后 Add 会自动 Initialize（引擎已支持）
       this.police.push(e);
     }
@@ -124,7 +130,7 @@ export default class WantedSystem extends Component {
     }
 
     // 被捕：仅步行状态可被贴身抓住（在车里警察追不上）
-    const car = this.FindEntity('Car')?.GetComponent('Car');
+    const car = this.activeCar();
     if (!car?.Active && nearest < this.tuning.bustDist) { this.bust(); return; }
 
     // 甩脱降星

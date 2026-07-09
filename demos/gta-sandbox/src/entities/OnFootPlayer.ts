@@ -64,7 +64,6 @@ export default class OnFootPlayer extends Component {
     for (const clip of this.soldier.animations) this.actions[clip.name] = this.mixer.clipAction(clip);
     this.actions['Idle']?.play();
 
-    Input.AddMouseMoveListner(this.onMouse);
     Input.AddClickListner(() => { if (!Input.PointerLocked) Input.RequestPointerLock(); });
     Input.AddKeyDownListner((e: KeyboardEvent) => {
       if (e.repeat || !this.active) return;
@@ -72,13 +71,6 @@ export default class OnFootPlayer extends Component {
     });
     this.updateAim();
   }
-
-  private onMouse = (e: MouseEvent) => {
-    if (!Input.PointerLocked || !this.active) return;
-    this.yaw -= e.movementX * this.tuning.mouseSpeed;
-    this.pitch -= e.movementY * this.tuning.mouseSpeed;
-    this.pitch = Math.max(-1.1, Math.min(1.1, this.pitch));
-  };
 
   private updateAim() {
     this.aimDir.set(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
@@ -94,11 +86,16 @@ export default class OnFootPlayer extends Component {
   }
 
   private tryEnterCar() {
-    const carEnt = this.FindEntity('Car');
-    if (!carEnt) return;
-    const car = carEnt.GetComponent('Car');
-    const d = this.parent!.Position.distanceTo(car.Position);
-    if (d < 5.0) { this.deactivate(); car.enterAsDriver(this); }
+    const cars = this.parent!.parent!.GetAll((e) => !!e.GetComponent('Car'));
+    let best: any = null;
+    let bestDist = Infinity;
+    for (const ent of cars) {
+      const car = ent.GetComponent('Car');
+      if (!car || car.Active) continue;
+      const d = this.parent!.Position.distanceTo(car.Position);
+      if (d < bestDist) { best = car; bestDist = d; }
+    }
+    if (best && bestDist < 5.0) { this.deactivate(); best.enterAsDriver(this); }
   }
 
   /** 被 Car 调用：下车后在指定位置复活步行控制。
@@ -113,6 +110,12 @@ export default class OnFootPlayer extends Component {
   private deactivate() { this.active = false; this.soldier.model.visible = false; }
 
   Update(t: number): void {
+    const mouse = Input.ConsumeMouseDelta();
+    if (this.active && (Input.PointerLocked || Input.ReplayMode)) {
+      this.yaw -= mouse.dx * this.tuning.mouseSpeed;
+      this.pitch -= mouse.dy * this.tuning.mouseSpeed;
+      this.pitch = Math.max(-1.1, Math.min(1.1, this.pitch));
+    }
     if (!this.active || t <= 0) { this.mixer && this.mixer.update(t); return; }
     this.updateAim();
 

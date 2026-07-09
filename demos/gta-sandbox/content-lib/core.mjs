@@ -34,6 +34,27 @@ export function materializeBlocks(t) {
   return blocks;
 }
 
+// Keep in sync with demos/gta-sandbox/src/game/PrefabRegistry.ts built-in registrations.
+export const PREFAB_CONTROLLER_TYPES = ['OnFootPlayer', 'Car', 'PoliceNPC'];
+
+/** 解析实体实例 at 字段：只允许 spawns.* 命名点位或 [x,z] 内容坐标。 */
+export function resolveEntityPoint(scene, at) {
+  if (Array.isArray(at)) {
+    if (at.length !== 2 || at.some((v) => typeof v !== 'number' || !Number.isFinite(v))) return null;
+    return [at[0], at[1]];
+  }
+  if (typeof at !== 'string') return null;
+  if (at === 'spawns.player') {
+    const p = scene?.spawns?.player;
+    return Array.isArray(p) ? [p[0], p[2]] : null;
+  }
+  if (at === 'spawns.car') {
+    const p = scene?.spawns?.car?.pos;
+    return Array.isArray(p) ? [p[0], p[2]] : null;
+  }
+  return null;
+}
+
 function insideBlock(x, z, b, margin) {
   return (
     x > b.x - b.w / 2 - margin && x < b.x + b.w / 2 + margin &&
@@ -74,12 +95,14 @@ export function validateContent(c) {
     if (cb) issues.push({ where: 'spawns.car', message: `汽车出生点 (${cx},${cz}) 在建筑内部（建筑中心 ${cb.x},${cb.z}）` });
   }
 
+  validatePrefabs(c, issues, inBounds);
+
   c.missions.forEach((m, i) => {
     const tag = `missions[${i}]`;
     if (!m.text?.trim()) issues.push({ where: tag, message: '任务缺少 text' });
     if (!m.pos && !m.special) issues.push({ where: tag, message: '任务必须有 pos（到点）或 special（特殊类型）' });
     if (m.special && m.special !== 'wanted') issues.push({ where: tag, message: `未知 special 类型 "${m.special}"` });
-    if (m.needCar && !c.scene.spawns.car) issues.push({ where: tag, message: 'needCar=true 但场景里没有汽车出生点' });
+    if (m.needCar && !hasEntityController(c.scene, 'Car')) issues.push({ where: tag, message: 'needCar=true 但场景里没有汽车实体实例' });
     if (m.pos) {
       const [x, z] = m.pos;
       if (!inBounds(x, z, 3)) issues.push({ where: tag, message: `任务点 (${x},${z}) 超出地图边界(±${half})` });
@@ -92,6 +115,79 @@ export function validateContent(c) {
   });
 
   return issues;
+}
+
+function placementMarginFor(controller) {
+  if (controller === 'Car') return 1.5;
+  return 1.0;
+}
+
+function hasEntityController(scene, controller) {
+  const prefabs = scene?.prefabs ?? {};
+  return (scene?.entities ?? []).some((e) => prefabs[e.prefab]?.controller === controller);
+}
+
+function validatePrefabs(c, issues, inBounds) {
+  const scene = c.scene;
+  const prefabs = scene.prefabs;
+  const entities = scene.entities;
+
+  if (!prefabs || typeof prefabs !== 'object') {
+    issues.push({ where: 'scene.prefabs', message: '缺少 prefabs 预制体定义' });
+    return;
+  }
+  if (!Array.isArray(entities)) {
+    issues.push({ where: 'scene.entities', message: '缺少 entities 实例表' });
+    return;
+  }
+
+  for (const required of ['player', 'car', 'police']) {
+    if (!prefabs[required]) issues.push({ where: `scene.prefabs.${required}`, message: '缺少内置 prefab 定义' });
+  }
+
+  for (const [name, prefab] of Object.entries(prefabs)) {
+    if (name.startsWith('_')) continue;
+    const where = `scene.prefabs.${name}.controller`;
+    if (!prefab || typeof prefab !== 'object') {
+      issues.push({ where: `scene.prefabs.${name}`, message: 'prefab 必须是对象' });
+      continue;
+    }
+    if (!PREFAB_CONTROLLER_TYPES.includes(prefab.controller)) {
+      issues.push({ where, message: `未知 controller "${prefab.controller}"（可用：${PREFAB_CONTROLLER_TYPES.join('/')})` });
+    }
+  }
+
+  const seenNames = new Set();
+  entities.forEach((e, i) => {
+    const tag = `scene.entities[${i}]`;
+    if (!e || typeof e !== 'object') {
+      issues.push({ where: tag, message: '实体实例必须是对象' });
+      return;
+    }
+    if (!e.name || typeof e.name !== 'string') issues.push({ where: `${tag}.name`, message: '实例 name 必须是非空字符串' });
+    else if (seenNames.has(e.name)) issues.push({ where: `${tag}.name`, message: `实例 name 重复 "${e.name}"` });
+    else seenNames.add(e.name);
+
+    const prefab = prefabs[e.prefab];
+    if (!prefab) {
+      issues.push({ where: `${tag}.prefab`, message: `未定义 prefab "${e.prefab}"` });
+      return;
+    }
+
+    const point = resolveEntityPoint(scene, e.at);
+    if (!point) {
+      issues.push({ where: `${tag}.at`, message: 'at 必须是 spawns.* 命名点位或 [x,z] 坐标数组' });
+      return;
+    }
+    const [x, z] = point;
+    if (!inBounds(x, z, placementMarginFor(prefab.controller))) {
+      issues.push({ where: `${tag}.at`, message: `实例落点 (${x},${z}) 超出地图边界(±${scene.town.groundHalf})` });
+    }
+    const b = hitBlock(x, z, c.blocks, placementMarginFor(prefab.controller));
+    if (b) {
+      issues.push({ where: `${tag}.at`, message: `实例落点 (${x},${z}) 在建筑内部（建筑中心 ${b.x},${b.z}）` });
+    }
+  });
 }
 
 const TUNING_SPEC = {
@@ -177,4 +273,19 @@ export function roadIntersections(t) {
   const pts = [];
   for (const x of mids) for (const z of mids) pts.push([x, z]);
   return pts;
+}
+
+export function contentFingerprint(content) {
+  const payload = JSON.stringify({
+    scene: content.scene,
+    missions: content.missions,
+    rules: content.rules,
+    tuning: content.tuning,
+  });
+  let h = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) {
+    h ^= payload.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
 }

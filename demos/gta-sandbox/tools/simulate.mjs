@@ -14,7 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { materializeBlocks, validateContent, validateTuning, insideAnyBlock } from '../content-lib/core.mjs';
+import { materializeBlocks, validateContent, validateTuning, insideAnyBlock, resolveEntityPoint } from '../content-lib/core.mjs';
 import { validateRules, simulateEvent, resolvePoint } from '../content-lib/rules.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -79,6 +79,17 @@ console.log('\n===== L1 抽象模拟（无渲染） =====');
     if (!pt || insideAnyBlock(blocks, pt[0], pt[1], 1.0)) { ok = false; why = `${a.to} 非法`; }
   }
   check('全部 teleport 目标合法（性质检查）', ok, why);
+}
+
+// 性质检查：所有 prefab 实例落点必须在可走区域，新增车/警察/未来拾取物都走同一护栏
+{
+  let ok = true, why = '';
+  (scene.entities ?? []).forEach((e, i) => {
+    const pt = resolveEntityPoint(scene, e.at);
+    if (!pt) { ok = false; why = `实体${i} at 无法解析`; return; }
+    if (insideAnyBlock(blocks, pt[0], pt[1], 1.0)) { ok = false; why = `实体${i}(${e.name})落点在楼内`; }
+  });
+  check('全部 prefab 实例落点不在建筑内', ok, why);
 }
 
 const ms = (performance.now() - t0).toFixed(1);

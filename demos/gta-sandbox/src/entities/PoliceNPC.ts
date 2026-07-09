@@ -49,11 +49,15 @@ export default class PoliceNPC extends Component {
     this.scene.remove(this.soldier.model);
   }
 
+  private activeCar(): any | null {
+    const cars = this.parent!.parent!.GetAll((e) => !!e.GetComponent('Car')).map((e) => e.GetComponent('Car'));
+    return cars.find((car) => car.Active) ?? null;
+  }
+
   Update(t: number): void {
     const playerEnt = this.FindEntity('Player');
-    const carEnt = this.FindEntity('Car');
     if (!playerEnt) return;
-    const car = carEnt?.GetComponent('Car');
+    const car = this.activeCar();
     const target: THREE.Vector3 = car?.Active ? car.Position : playerEnt.Position;
 
     const m = this.soldier.model;

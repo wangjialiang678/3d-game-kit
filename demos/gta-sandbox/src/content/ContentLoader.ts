@@ -3,7 +3,7 @@
  * 核心逻辑（物化/校验）在 ../../content-lib/core.mjs —— 与 Node CLI 编辑工具共用同一实现。
  */
 import { materializeBlocks } from '../../content-lib/core.mjs';
-import type { TownParams, Block, TuningContent } from '../../content-lib/core';
+import type { TownParams, Block, TuningContent, PrefabDefinition, EntityInstance } from '../../content-lib/core';
 
 export type { TownParams, Block, TuningContent };
 
@@ -17,6 +17,8 @@ export interface SceneContent {
     player: [number, number, number];
     car: { pos: [number, number, number]; headingDeg: number };
   };
+  prefabs: Record<string, PrefabDefinition>;
+  entities: EntityInstance[];
   assets: Record<string, string>;
 }
 

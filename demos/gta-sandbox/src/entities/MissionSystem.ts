@@ -76,6 +76,11 @@ export default class MissionSystem extends Component {
     this.applyMission();
   }
 
+  private activeCar(): any | null {
+    const cars = this.parent!.parent!.GetAll((e) => !!e.GetComponent('Car')).map((e) => e.GetComponent('Car'));
+    return cars.find((car) => car.Active) ?? null;
+  }
+
   Update(t: number): void {
     this.time += t;
     if (this.marker.visible) {
@@ -86,7 +91,7 @@ export default class MissionSystem extends Component {
     const m = this.cur();
     if (!m) return;
 
-    const car = this.FindEntity('Car')?.GetComponent('Car');
+    const car = this.activeCar();
     const playerPos: THREE.Vector3 = car?.Active ? car.Position : (this.FindEntity('Player')!.Position as THREE.Vector3);
 
     if (m.pos) {

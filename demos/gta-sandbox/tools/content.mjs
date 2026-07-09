@@ -5,8 +5,10 @@
  *
  * 用法（在 demos/gta-sandbox 目录，或用绝对路径）：
  *   node tools/content.mjs validate
- *   node tools/content.mjs list missions|blocks|spawns|roads|tuning
+ *   node tools/content.mjs list missions|blocks|spawns|entities|roads|tuning
  *   node tools/content.mjs tune police.speed 5
+ *   node tools/content.mjs add-entity --prefab car --name Car2 --at -13,39
+ *   node tools/content.mjs remove-entity <name>
  *   node tools/content.mjs set-mission <index> --pos <x,z> [--text "..."] [--need-car true|false]
  *   node tools/content.mjs add-mission --text "..." (--pos <x,z> | --special wanted) [--need-car true]
  *   node tools/content.mjs remove-mission <index>
@@ -72,6 +74,11 @@ const parsePos = (s, n) => {
   if (v.length !== n || v.some(Number.isNaN)) { console.error(`--pos 需要 ${n} 个数字（逗号分隔），收到 "${s}"`); process.exit(1); }
   return v;
 };
+const parseAt = (s) => {
+  if (!s) { console.error('--at 必填（spawns.* 或 x,z）'); process.exit(1); }
+  if (s.includes(',')) return parsePos(s, 2);
+  return s;
+};
 const cloneJson = (v) => JSON.parse(JSON.stringify(v));
 const setDot = (obj, path, value) => {
   const parts = path.split('.');
@@ -102,11 +109,35 @@ switch (cmd) {
     if (sub === 'missions') console.log(JSON.stringify(content.missions, null, 2));
     else if (sub === 'blocks') console.log(JSON.stringify(content.blocks.map(b => ({ x: +b.x.toFixed(1), z: +b.z.toFixed(1), w: +b.w.toFixed(1), d: +b.d.toFixed(1), h: +b.h.toFixed(1) })), null, 2));
     else if (sub === 'spawns') console.log(JSON.stringify(scene.spawns, null, 2));
+    else if (sub === 'entities') console.log(JSON.stringify(scene.entities ?? [], null, 2));
     else if (sub === 'tuning') console.log(JSON.stringify(tuning, null, 2));
     else if (sub === 'roads') {
       console.log('马路交叉口（合法任务点候选）:');
       console.log(roadIntersections(scene.town).map(p => `(${p[0]}, ${p[1]})`).join('  '));
-    } else { console.error('list 什么？missions | blocks | spawns | roads | tuning'); process.exit(1); }
+    } else { console.error('list 什么？missions | blocks | spawns | entities | roads | tuning'); process.exit(1); }
+    break;
+  }
+
+  case 'add-entity': {
+    const prefab = arg('prefab');
+    const name = arg('name');
+    const at = parseAt(arg('at'));
+    if (!prefab || !name) { console.error('用法：add-entity --prefab <prefab> --name <name> --at <spawns.*|x,z>'); process.exit(1); }
+    const nextScene = cloneJson(scene);
+    if (!Array.isArray(nextScene.entities)) nextScene.entities = [];
+    nextScene.entities.push({ prefab, name, at });
+    save(nextScene, missionsPack, rules, tuning, has('force'));
+    break;
+  }
+
+  case 'remove-entity': {
+    const name = sub;
+    if (!name) { console.error('用法：remove-entity <name>'); process.exit(1); }
+    const nextScene = cloneJson(scene);
+    const before = nextScene.entities?.length ?? 0;
+    nextScene.entities = (nextScene.entities ?? []).filter((e) => e.name !== name);
+    if (nextScene.entities.length === before) { console.error(`没有实体 "${name}"`); process.exit(1); }
+    save(nextScene, missionsPack, rules, tuning, has('force'));
     break;
   }
 
@@ -168,6 +199,6 @@ switch (cmd) {
   }
 
   default:
-    console.log('命令：validate | list <missions|blocks|spawns|roads|tuning> | tune <dot.path> <number> | set-mission <i> | add-mission | remove-mission <i> | set-spawn <player|car>');
+    console.log('命令：validate | list <missions|blocks|spawns|entities|roads|tuning> | add-entity | remove-entity | tune <dot.path> <number> | set-mission <i> | add-mission | remove-mission <i> | set-spawn <player|car>');
     process.exit(cmd ? 1 : 0);
 }

@@ -6,19 +6,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
-import { Physics, initPhysics, EntityManager, Entity } from '@engine';
-import OnFootPlayer from './entities/OnFootPlayer';
-import Car from './entities/Car';
+import { Physics, initPhysics, EntityManager, Entity, Input } from '@engine';
 import WantedSystem from './entities/WantedSystem';
 import MissionSystem from './entities/MissionSystem';
 import HudView from './view/HudView';
-import { cloneSoldier, buildCar } from './util/build';
 import { loadContent, type Content } from './content/ContentLoader';
 import { validateContent, validateTuning } from '../content-lib/core.mjs';
 import { validateRules } from '../content-lib/rules.mjs';
 import RuleSystem from './entities/RuleSystem';
 import type { Issue } from '../content-lib/core';
 import FlightRecorder from './debug/FlightRecorder';
+import PrefabRegistry from './game/PrefabRegistry';
 
 class Game {
   private renderer!: THREE.WebGLRenderer;
@@ -29,6 +27,11 @@ class Game {
   private clock = new THREE.Clock();
   private assets: Record<string, any> = {};
   private running = false;
+  private prefabs!: PrefabRegistry;
+  private recorder!: FlightRecorder;
+  private pendingReplayDump: any = null;
+  public runSeed = 0;
+  public tick = 0;
   public content!: Content;
   public blockMeshes: THREE.Mesh[] = [];   // 编辑器用：与 content.blocks 按下标对齐
   private editorOpen = false;
@@ -55,6 +58,13 @@ class Game {
     const btn = document.getElementById('play') as HTMLButtonElement;
     btn.textContent = 'PLAY'; btn.disabled = false;
     btn.addEventListener('click', () => this.start());
+    (window as any).__flight = {
+      loadReplay: (dump: any) => this.loadReplay(dump),
+      replay: (dump: any) => this.loadReplay(dump),
+      dump: () => {
+        throw new Error('游戏尚未开局，无法 dump；回放请调用 __flight.loadReplay(dump)');
+      },
+    };
 
     // P3：?autotest → 试玩机器人自动开局并打穿全部任务（验证闭环）
     if (new URLSearchParams(location.search).has('autotest')) {
@@ -141,32 +151,75 @@ class Game {
     }
   }
 
+  private entityPosition(instance: any): THREE.Vector3 {
+    const at = instance.at;
+    if (Array.isArray(at)) return new THREE.Vector3(at[0], 0, at[1]);
+    if (at === 'spawns.player') {
+      const p = this.content.scene.spawns.player;
+      return new THREE.Vector3(p[0], p[1], p[2]);
+    }
+    if (at === 'spawns.car') {
+      const p = this.content.scene.spawns.car.pos;
+      return new THREE.Vector3(p[0], p[1], p[2]);
+    }
+    throw new Error(`[scene] 未知实体点位 ${String(at)}`);
+  }
+
+  private entityParams(instance: any): Record<string, any> {
+    const { prefab: _prefab, name: _name, at, ...params } = instance;
+    if (at === 'spawns.car' && params.headingDeg === undefined) {
+      params.headingDeg = this.content.scene.spawns.car.headingDeg;
+    }
+    return params;
+  }
+
+  private parseReplayDump(dump: any) {
+    return typeof dump === 'string' ? JSON.parse(dump) : dump;
+  }
+
+  loadReplay(dump: any) {
+    this.pendingReplayDump = this.parseReplayDump(dump);
+    const urlSeed = new URLSearchParams(location.search).get('seed');
+    if (urlSeed !== null && this.pendingReplayDump.runSeed !== undefined && Number(urlSeed) !== Number(this.pendingReplayDump.runSeed)) {
+      console.warn(`[replay] URL seed=${urlSeed} 与 dump.runSeed=${this.pendingReplayDump.runSeed} 不一致；本次使用 dump.runSeed`);
+    }
+    if (!this.running) this.start();
+    else {
+      this.recorder.loadReplay(this.pendingReplayDump);
+      this.pendingReplayDump = null;
+    }
+  }
+
   start() {
+    if (this.running) return;
     (document.getElementById('menu') as HTMLElement).style.display = 'none';
     (document.getElementById('hud') as HTMLElement).style.display = 'block';
+    Input.SetReplayMode(false);
+    this.tick = 0;
     this.physics = new Physics(-9.81);
     this.em = new EntityManager();
     this.buildTown();
+    const url = new URLSearchParams(location.search);
+    const seedRaw = this.pendingReplayDump?.runSeed ?? url.get('seed');
+    const seed = Number(seedRaw);
+    this.runSeed = Number.isFinite(seed) ? Math.trunc(seed) : (Date.now() % 0x80000000);
 
-    // player on foot（出生点来自内容包）
-    const sp = this.content.scene.spawns;
-    const player = new Entity(); player.SetName('Player');
-    player.AddComponent(new OnFootPlayer(this.camera, this.physics, this.scene, cloneSoldier(this.assets['soldier']), this.content.tuning.player));
-    player.SetPosition(new THREE.Vector3(...sp.player));
-    this.em.Add(player);
+    this.prefabs = new PrefabRegistry({
+      camera: this.camera,
+      physics: this.physics,
+      scene: this.scene,
+      content: this.content,
+      tuning: this.content.tuning,
+      assets: this.assets,
+    });
 
-    // a drivable car parked on the road（位置/朝向来自内容包）
-    const car = new Entity(); car.SetName('Car');
-    car.AddComponent(new Car(
-      this.camera, this.physics, this.scene, buildCar(0x2f6fb0),
-      new THREE.Vector3(...sp.car.pos), (sp.car.headingDeg * Math.PI) / 180,
-      this.content.tuning.car,
-    ));
-    this.em.Add(car);
+    for (const instance of this.content.scene.entities) {
+      this.em.Add(this.prefabs.spawn(instance.prefab, instance.name, this.entityPosition(instance), this.entityParams(instance)));
+    }
 
     // wanted system (G to raise heat, police chase, escape to cool down)
     const wanted = new Entity(); wanted.SetName('Wanted');
-    wanted.AddComponent(new WantedSystem(this.scene, this.assets['soldier'], this.content.tuning.police));
+    wanted.AddComponent(new WantedSystem(this.prefabs, this.content.tuning.police, this.runSeed));
     this.em.Add(wanted);
 
     // ECA 规则系统（数据驱动的玩法逻辑：被捕流程等）
@@ -184,14 +237,21 @@ class Game {
     this.em.Add(hud);
 
     // 飞行记录仪先安装 EventBus tap，再初始化各系统，避免漏掉 Initialize 阶段的 mission-changed 等事件。
-    new FlightRecorder(this);
+    this.recorder = new FlightRecorder(this);
 
     this.em.EndSetup();
+    if (this.pendingReplayDump) {
+      this.recorder.loadReplay(this.pendingReplayDump);
+      this.pendingReplayDump = null;
+    }
     this.scene.add(this.camera);
-    try { document.body.requestPointerLock(); } catch { /* headless/autotest 下没有指针锁 */ }
+    if (!Input.ReplayMode) {
+      try { document.body.requestPointerLock(); } catch { /* headless/autotest 下没有指针锁 */ }
+    }
 
     // P4：按 E 进入可视化编辑器（懒加载；输入框聚焦时不触发）
     document.addEventListener('keydown', async (e) => {
+      if (Input.ReplayMode) return;
       if (e.code !== 'KeyE' || this.editorOpen) return;
       const tag = (document.activeElement?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea') return;
@@ -214,9 +274,14 @@ class Game {
     this.acc += Math.min(0.25, this.clock.getDelta());
     let n = 0;
     while (this.acc >= Game.STEP && n < Game.MAX_SUBSTEPS) {
+      const tick = this.tick;
+      this.recorder?.applyReplayTick(tick);
       this.physics.step();
       this.em.Update(Game.STEP);
+      this.recorder?.recordInputTick(tick);
       this.acc -= Game.STEP;
+      this.tick++;
+      this.recorder?.afterReplayTick(this.tick);
       n++;
     }
     if (n === Game.MAX_SUBSTEPS) this.acc = 0;   // 极端卡顿时丢弃积压，避免螺旋死亡

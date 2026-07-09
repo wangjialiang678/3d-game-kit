@@ -10,6 +10,10 @@ export default class EntityManager {
     return this.entities.find((el) => el.Name === name);
   }
 
+  GetAll(predicate?: (entity: Entity) => boolean): Entity[] {
+    return predicate ? this.entities.filter(predicate) : [...this.entities];
+  }
+
   Add(entity: Entity): void {
     if (!entity.Name) entity.SetName(this.ids);
     entity.id = this.ids;
