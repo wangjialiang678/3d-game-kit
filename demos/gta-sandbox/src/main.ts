@@ -6,17 +6,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
-import { Physics, initPhysics, EntityManager, Entity, Input } from '@engine';
-import WantedSystem from './entities/WantedSystem';
-import MissionSystem from './entities/MissionSystem';
-import HudView from './view/HudView';
+import { initPhysics, Input } from '@engine';
+import type { Physics, EntityManager } from '@engine';
 import { loadContent, type Content } from './content/ContentLoader';
 import { validateContent, validateTuning } from '../content-lib/core.mjs';
 import { validateRules } from '../content-lib/rules.mjs';
-import RuleSystem from './entities/RuleSystem';
 import type { Issue } from '../content-lib/core';
 import FlightRecorder from './debug/FlightRecorder';
-import PrefabRegistry from './game/PrefabRegistry';
+import type PrefabRegistry from './game/PrefabRegistry';
+import { assembleGame } from './game/assemble';
 
 class Game {
   private renderer!: THREE.WebGLRenderer;
@@ -135,44 +133,6 @@ class Game {
     this.assets['matWall'] = this.tex('wall', 3);
   }
 
-  buildTown() {
-    // 全部来自内容包：地面尺寸 + 物化后的建筑列表（P1：引擎只负责"照数据施工"）
-    const half = this.content.scene.town.groundHalf;
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), this.assets['matGround']);
-    ground.position.y = -0.5; ground.receiveShadow = true; this.scene.add(ground);
-    this.physics.addStaticBox(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(half, 0.5, half));
-
-    for (const b of this.content.blocks) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), this.assets['matWall']);
-      mesh.position.set(b.x, b.h / 2, b.z); mesh.castShadow = true; mesh.receiveShadow = true;
-      this.scene.add(mesh);
-      this.blockMeshes.push(mesh);   // 与 content.blocks 下标对齐，供编辑器点选
-      this.physics.addStaticBox(new THREE.Vector3(b.x, b.h / 2, b.z), new THREE.Vector3(b.w / 2, b.h / 2, b.d / 2));
-    }
-  }
-
-  private entityPosition(instance: any): THREE.Vector3 {
-    const at = instance.at;
-    if (Array.isArray(at)) return new THREE.Vector3(at[0], 0, at[1]);
-    if (at === 'spawns.player') {
-      const p = this.content.scene.spawns.player;
-      return new THREE.Vector3(p[0], p[1], p[2]);
-    }
-    if (at === 'spawns.car') {
-      const p = this.content.scene.spawns.car.pos;
-      return new THREE.Vector3(p[0], p[1], p[2]);
-    }
-    throw new Error(`[scene] 未知实体点位 ${String(at)}`);
-  }
-
-  private entityParams(instance: any): Record<string, any> {
-    const { prefab: _prefab, name: _name, at, ...params } = instance;
-    if (at === 'spawns.car' && params.headingDeg === undefined) {
-      params.headingDeg = this.content.scene.spawns.car.headingDeg;
-    }
-    return params;
-  }
-
   private parseReplayDump(dump: any) {
     return typeof dump === 'string' ? JSON.parse(dump) : dump;
   }
@@ -196,45 +156,24 @@ class Game {
     (document.getElementById('hud') as HTMLElement).style.display = 'block';
     Input.SetReplayMode(false);
     this.tick = 0;
-    this.physics = new Physics(-9.81);
-    this.em = new EntityManager();
-    this.buildTown();
     const url = new URLSearchParams(location.search);
     const seedRaw = this.pendingReplayDump?.runSeed ?? url.get('seed');
     const seed = Number(seedRaw);
     this.runSeed = Number.isFinite(seed) ? Math.trunc(seed) : (Date.now() % 0x80000000);
 
-    this.prefabs = new PrefabRegistry({
-      camera: this.camera,
-      physics: this.physics,
-      scene: this.scene,
+    const assembled = assembleGame({
       content: this.content,
-      tuning: this.content.tuning,
+      scene: this.scene,
+      camera: this.camera,
       assets: this.assets,
+      seed: this.runSeed,
+      includeHud: true,
+      blockMeshes: this.blockMeshes,
+      initialize: false,
     });
-
-    for (const instance of this.content.scene.entities) {
-      this.em.Add(this.prefabs.spawn(instance.prefab, instance.name, this.entityPosition(instance), this.entityParams(instance)));
-    }
-
-    // wanted system (G to raise heat, police chase, escape to cool down)
-    const wanted = new Entity(); wanted.SetName('Wanted');
-    wanted.AddComponent(new WantedSystem(this.prefabs, this.content.tuning.police, this.runSeed));
-    this.em.Add(wanted);
-
-    // ECA 规则系统（数据驱动的玩法逻辑：被捕流程等）
-    const rulesEnt = new Entity(); rulesEnt.SetName('Rules');
-    rulesEnt.AddComponent(new RuleSystem(this.content.rules, this.content));
-    this.em.Add(rulesEnt);
-
-    // mission chain (walk → drive → wanted-and-escape)
-    const missions = new Entity(); missions.SetName('Missions');
-    missions.AddComponent(new MissionSystem(this.scene, this.content.missions, this.content.tuning.mission));
-    this.em.Add(missions);
-
-    const hud = new Entity(); hud.SetName('Hud');
-    hud.AddComponent(new HudView(this.camera));
-    this.em.Add(hud);
+    this.physics = assembled.physics;
+    this.em = assembled.em;
+    this.prefabs = assembled.prefabs;
 
     // 飞行记录仪先安装 EventBus tap，再初始化各系统，避免漏掉 Initialize 阶段的 mission-changed 等事件。
     this.recorder = new FlightRecorder(this);

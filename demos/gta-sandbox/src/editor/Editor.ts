@@ -1,21 +1,25 @@
 /**
- * Editor — 游戏内可视化编辑器（P4）。
- * 游戏中按 E 进入：轨道相机俯瞰小镇，点选建筑/任务点/出生点，拖拽移动、
- * 属性面板改数值、增删对象；[校验] 跑与 CLI/游戏同一份规则；[保存] 写回
- * public/content/*.json（经 vite 中间件）并重载——人与 AI 编辑的是同一份内容数据。
+ * Editor — 游戏内可视化编辑器。
  *
- * 注意：编辑模式冻结游戏模拟，物理碰撞体不实时重建；因此退出只有两条路：
- * 保存并重载 / 放弃并重载（保证画面-数据-物理三者一致）。
+ * 所有内容变更都通过 content-lib/commands.mjs 执行；拖拽时只移动
+ * mesh 做视觉预览，pointerup 才提交一条命令，因此一次拖拽就是一步 undo。
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { validateContent } from '../../content-lib/core.mjs';
+import { execute, validateAll } from '../../content-lib/commands.mjs';
 
 type Sel =
   | { type: 'block'; index: number; mesh: THREE.Mesh }
   | { type: 'mission'; index: number; mesh: THREE.Mesh }
   | { type: 'spawn-player'; mesh: THREE.Object3D }
   | { type: 'spawn-car'; mesh: THREE.Object3D };
+
+type SelRef =
+  | { type: 'block'; index: number }
+  | { type: 'mission'; index: number }
+  | { type: 'spawn-player' }
+  | { type: 'spawn-car' }
+  | null;
 
 export default class Editor {
   private g: any;
@@ -25,6 +29,11 @@ export default class Editor {
   private ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private sel: Sel | null = null;
   private dragging = false;
+  private dragMoved = false;
+
+  private history: string[] = [];
+  private redoHistory: string[] = [];
+  private readonly historyCap = 50;
 
   private gizmos = new THREE.Group();
   private missionMeshes: THREE.Mesh[] = [];
@@ -38,31 +47,128 @@ export default class Editor {
   constructor(game: any) { this.g = game; }
 
   enter() {
-    (window as any).__editor = this;   // 供测试/AI 代理编程操作
+    (window as any).__editor = this;
     const g = this.g;
     g.running = false;
     try { document.exitPointerLock(); } catch { /* ignore */ }
 
-    // 俯瞰相机 + 轨道控制
     this.controls = new OrbitControls(g.camera, g.renderer.domElement);
     g.camera.position.set(0, 90, 70);
     this.controls.target.set(0, 0, 0);
     this.controls.update();
 
+    this.rebuildBlocks();
     this.buildGizmos();
     this.buildPanel();
 
     g.renderer.domElement.addEventListener('pointerdown', this.onDown);
     g.renderer.domElement.addEventListener('pointermove', this.onMove);
     g.renderer.domElement.addEventListener('pointerup', this.onUp);
+    document.addEventListener('keydown', this.onKeyDown);
     g.renderer.setAnimationLoop(() => { this.controls.update(); g.renderer.render(g.scene, g.camera); });
   }
 
-  // ---------- 场景标记 ----------
+  // ---------- snapshots / commands ----------
+  private snapshot(): string {
+    return JSON.stringify(this.g.content);
+  }
+
+  private restore(json: string) {
+    const next = JSON.parse(json);
+    const content = this.g.content;
+    for (const key of Object.keys(content)) delete content[key];
+    Object.assign(content, next);
+  }
+
+  private pushHistory(before: string) {
+    this.history.push(before);
+    if (this.history.length > this.historyCap) this.history.shift();
+    this.redoHistory = [];
+  }
+
+  private command(name: string, params: any, ref: SelRef = this.selRef()): boolean {
+    const before = this.snapshot();
+    const issues = execute(this.g.content, name, params);
+    if (issues.length) {
+      this.renderIssues(issues);
+      this.refresh(ref);
+      return false;
+    }
+    this.pushHistory(before);
+    this.refresh(ref);
+    return true;
+  }
+
+  undo() {
+    const previous = this.history.pop();
+    if (!previous) return;
+    const current = this.snapshot();
+    this.redoHistory.push(current);
+    this.restore(previous);
+    this.refresh(this.selRef());
+  }
+
+  redo() {
+    const next = this.redoHistory.pop();
+    if (!next) return;
+    const current = this.snapshot();
+    this.history.push(current);
+    this.restore(next);
+    this.refresh(this.selRef());
+  }
+
+  private onKeyDown = (e: KeyboardEvent) => {
+    const tag = (document.activeElement?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    if (!(e.metaKey || e.ctrlKey) || e.code !== 'KeyZ') return;
+    e.preventDefault();
+    if (e.shiftKey) this.redo();
+    else this.undo();
+  };
+
+  // ---------- scene markers ----------
+  private makeBlockMesh(b: any, index: number): THREE.Mesh {
+    const base = this.g.assets['matWall'];
+    const mat = base?.clone ? base.clone() : new THREE.MeshStandardMaterial({ color: 0x777777 });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat);
+    mesh.position.set(b.x, b.h / 2, b.z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { type: 'block', index };
+    return mesh;
+  }
+
+  private rebuildBlocks() {
+    for (const mesh of this.g.blockMeshes ?? []) {
+      this.g.scene.remove(mesh);
+      mesh.geometry?.dispose();
+      const mat = mesh.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat?.dispose?.();
+    }
+    this.g.blockMeshes = [];
+    this.g.content.blocks.forEach((b: any, i: number) => {
+      const mesh = this.makeBlockMesh(b, i);
+      this.g.scene.add(mesh);
+      this.g.blockMeshes.push(mesh);
+    });
+  }
+
+  private disposeGizmos() {
+    this.g.scene.remove(this.gizmos);
+    this.gizmos.traverse((o: any) => {
+      o.geometry?.dispose?.();
+      if (Array.isArray(o.material)) o.material.forEach((m: THREE.Material) => m.dispose());
+      else o.material?.dispose?.();
+    });
+  }
+
   private buildGizmos() {
     const g = this.g;
+    this.gizmos = new THREE.Group();
+    this.missionMeshes = [];
     g.scene.add(this.gizmos);
-    // 所有任务点（编辑模式下全部可见，橙色小柱）
+
     this.g.content.missions.forEach((m: any, i: number) => {
       if (!m.pos) return;
       const mesh = new THREE.Mesh(
@@ -74,23 +180,29 @@ export default class Editor {
       this.gizmos.add(mesh);
       this.missionMeshes.push(mesh);
     });
-    // 玩家出生点（绿色锥）
+
     const sp = g.content.scene.spawns;
     this.playerGizmo = new THREE.Mesh(new THREE.ConeGeometry(1.2, 3.5, 16), new THREE.MeshBasicMaterial({ color: 0x37d67a }));
     this.playerGizmo.position.set(sp.player[0], 1.75, sp.player[2]);
     this.playerGizmo.userData = { type: 'spawn-player' };
     this.gizmos.add(this.playerGizmo);
-    // 汽车出生点（蓝色块）
+
     this.carGizmo = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 4.2), new THREE.MeshBasicMaterial({ color: 0x3f8cff, transparent: true, opacity: 0.8 }));
     this.carGizmo.position.set(sp.car.pos[0], 0.6, sp.car.pos[2]);
     this.carGizmo.rotation.y = (sp.car.headingDeg * Math.PI) / 180;
     this.carGizmo.userData = { type: 'spawn-car' };
     this.gizmos.add(this.carGizmo);
-    // 建筑 mesh 打标（由 main.buildTown 暴露）
-    g.blockMeshes.forEach((mesh: THREE.Mesh, i: number) => { mesh.userData = { type: 'block', index: i }; });
   }
 
-  // ---------- 拾取与拖拽 ----------
+  private refresh(ref: SelRef = this.selRef()) {
+    this.sel = null;
+    this.rebuildBlocks();
+    this.disposeGizmos();
+    this.buildGizmos();
+    this.selectByRef(ref);
+  }
+
+  // ---------- picking / dragging ----------
   private pick(ev: PointerEvent): Sel | null {
     const g = this.g;
     const r = g.renderer.domElement.getBoundingClientRect();
@@ -110,6 +222,7 @@ export default class Editor {
   private onDown = (ev: PointerEvent) => {
     const s = this.pick(ev);
     this.select(s);
+    this.dragMoved = false;
     if (s) { this.dragging = true; this.controls.enabled = false; }
   };
 
@@ -121,34 +234,85 @@ export default class Editor {
     this.ray.setFromCamera(this.ndc, g.camera);
     const hit = new THREE.Vector3();
     if (!this.ray.ray.intersectPlane(this.ground, hit)) return;
-    const x = Math.round(hit.x * 2) / 2, z = Math.round(hit.z * 2) / 2;   // 0.5m 吸附
-    this.applyMove(x, z);
-    this.fillProps();
+    const x = Math.round(hit.x * 2) / 2;
+    const z = Math.round(hit.z * 2) / 2;
+    this.applyMoveVisual(x, z);
+    this.dragMoved = true;
   };
 
-  private onUp = () => { this.dragging = false; this.controls.enabled = true; };
+  private onUp = () => {
+    const s = this.sel;
+    this.dragging = false;
+    this.controls.enabled = true;
+    if (!s || !this.dragMoved) return;
+    this.commitVisualMove(s);
+    this.dragMoved = false;
+  };
 
-  private applyMove(x: number, z: number) {
-    const c = this.g.content;
+  private applyMoveVisual(x: number, z: number) {
     const s = this.sel!;
-    if (s.type === 'block') { const b = c.blocks[s.index]; b.x = x; b.z = z; s.mesh.position.x = x; s.mesh.position.z = z; }
-    else if (s.type === 'mission') { c.missions[s.index].pos = [x, z]; s.mesh.position.x = x; s.mesh.position.z = z; }
-    else if (s.type === 'spawn-player') { const sp = c.scene.spawns.player; sp[0] = x; sp[2] = z; s.mesh.position.x = x; s.mesh.position.z = z; }
-    else if (s.type === 'spawn-car') { const cp = c.scene.spawns.car.pos; cp[0] = x; cp[2] = z; s.mesh.position.x = x; s.mesh.position.z = z; }
+    if (s.type === 'block') {
+      s.mesh.position.x = x;
+      s.mesh.position.z = z;
+    } else if (s.type === 'mission') {
+      s.mesh.position.x = x;
+      s.mesh.position.z = z;
+    } else if (s.type === 'spawn-player') {
+      s.mesh.position.x = x;
+      s.mesh.position.z = z;
+    } else if (s.type === 'spawn-car') {
+      s.mesh.position.x = x;
+      s.mesh.position.z = z;
+    }
+  }
+
+  private commitVisualMove(s: Sel) {
+    const x = +(s.mesh.position.x.toFixed(1));
+    const z = +(s.mesh.position.z.toFixed(1));
+    if (s.type === 'block') {
+      this.command('move-block', { index: s.index, pos: [x, z] }, { type: 'block', index: s.index });
+    } else if (s.type === 'mission') {
+      this.command('move-mission', { index: s.index, pos: [x, z] }, { type: 'mission', index: s.index });
+    } else if (s.type === 'spawn-player') {
+      const y = this.g.content.scene.spawns.player[1];
+      this.command('set-spawn', { kind: 'player', pos: [x, y, z] }, { type: 'spawn-player' });
+    } else {
+      const car = this.g.content.scene.spawns.car;
+      this.command('set-spawn', { kind: 'car', pos: [x, car.pos[1], z] }, { type: 'spawn-car' });
+    }
+  }
+
+  private selRef(s: Sel | null = this.sel): SelRef {
+    if (!s) return null;
+    if (s.type === 'block' || s.type === 'mission') return { type: s.type, index: s.index };
+    return { type: s.type };
+  }
+
+  private selectByRef(ref: SelRef) {
+    if (!ref) return this.select(null);
+    if (ref.type === 'block') return this.select(ref.index < this.g.blockMeshes.length ? { type: 'block', index: ref.index, mesh: this.g.blockMeshes[ref.index] } : null);
+    if (ref.type === 'mission') {
+      const mesh = this.missionMeshes.find((m) => m.userData.index === ref.index);
+      return this.select(mesh ? { type: 'mission', index: ref.index, mesh } : null);
+    }
+    if (ref.type === 'spawn-player') return this.select({ type: 'spawn-player', mesh: this.playerGizmo });
+    return this.select({ type: 'spawn-car', mesh: this.carGizmo });
   }
 
   private select(s: Sel | null) {
-    // 高亮：还原旧选中
-    if (this.sel?.type === 'block') ((this.sel.mesh.material as THREE.MeshStandardMaterial).emissive as THREE.Color)?.set(0x000000);
+    if (this.sel?.type === 'block') {
+      const mat = this.sel.mesh.material as THREE.MeshStandardMaterial;
+      mat.emissive?.set(0x000000);
+    }
     this.sel = s;
     if (s?.type === 'block') {
-      const m = s.mesh.material as THREE.MeshStandardMaterial;
-      if (m.emissive) m.emissive.set(0x664400);
+      const mat = s.mesh.material as THREE.MeshStandardMaterial;
+      mat.emissive?.set(0x664400);
     }
     this.fillProps();
   }
 
-  // ---------- 面板 ----------
+  // ---------- panel ----------
   private buildPanel() {
     const el = document.createElement('div');
     el.innerHTML = `
@@ -201,7 +365,7 @@ export default class Editor {
 
   private input(label: string, value: number | string, onChange: (v: string) => void, type = 'number') {
     const id = `kit-f-${Math.random().toString(36).slice(2, 8)}`;
-    setTimeout(() => document.getElementById(id)?.addEventListener('change', (e) => { onChange((e.target as HTMLInputElement).value); this.syncSelMesh(); }));
+    setTimeout(() => document.getElementById(id)?.addEventListener('change', (e) => onChange((e.target as HTMLInputElement).value)));
     return `<label>${label}<input id="${id}" type="${type}" value="${value}" step="0.5"></label>`;
   }
 
@@ -212,113 +376,68 @@ export default class Editor {
     if (s.type === 'block') {
       const b = c.blocks[s.index];
       this.props.innerHTML = `<b>建筑 #${s.index}</b>` +
-        this.input('x', b.x.toFixed(1), v => { b.x = +v; }) + this.input('z', b.z.toFixed(1), v => { b.z = +v; }) +
-        this.input('宽 w', b.w.toFixed(1), v => { b.w = +v; }) + this.input('深 d', b.d.toFixed(1), v => { b.d = +v; }) +
-        this.input('高 h', b.h.toFixed(1), v => { b.h = +v; });
+        this.input('x', b.x.toFixed(1), v => this.command('move-block', { index: s.index, pos: [+v, b.z] }, { type: 'block', index: s.index })) +
+        this.input('z', b.z.toFixed(1), v => this.command('move-block', { index: s.index, pos: [b.x, +v] }, { type: 'block', index: s.index })) +
+        this.input('宽 w', b.w.toFixed(1), v => this.command('resize-block', { index: s.index, size: { w: +v } }, { type: 'block', index: s.index })) +
+        this.input('深 d', b.d.toFixed(1), v => this.command('resize-block', { index: s.index, size: { d: +v } }, { type: 'block', index: s.index })) +
+        this.input('高 h', b.h.toFixed(1), v => this.command('resize-block', { index: s.index, size: { h: +v } }, { type: 'block', index: s.index }));
     } else if (s.type === 'mission') {
       const m = c.missions[s.index];
       this.props.innerHTML = `<b>任务点 #${s.index}</b>` +
-        this.input('文字', m.text, v => { m.text = v; }, 'text') +
-        this.input('x', m.pos[0], v => { m.pos[0] = +v; }) + this.input('z', m.pos[1], v => { m.pos[1] = +v; });
+        this.input('文字', m.text, v => this.command('set-mission-text', { index: s.index, text: v }, { type: 'mission', index: s.index }), 'text') +
+        this.input('x', m.pos[0], v => this.command('move-mission', { index: s.index, pos: [+v, m.pos[1]] }, { type: 'mission', index: s.index })) +
+        this.input('z', m.pos[1], v => this.command('move-mission', { index: s.index, pos: [m.pos[0], +v] }, { type: 'mission', index: s.index }));
     } else if (s.type === 'spawn-player') {
       const sp = c.scene.spawns.player;
       this.props.innerHTML = `<b>玩家出生点</b>` +
-        this.input('x', sp[0], v => { sp[0] = +v; }) + this.input('z', sp[2], v => { sp[2] = +v; });
+        this.input('x', sp[0], v => this.command('set-spawn', { kind: 'player', pos: [+v, sp[1], sp[2]] }, { type: 'spawn-player' })) +
+        this.input('z', sp[2], v => this.command('set-spawn', { kind: 'player', pos: [sp[0], sp[1], +v] }, { type: 'spawn-player' }));
     } else {
       const cp = c.scene.spawns.car;
       this.props.innerHTML = `<b>汽车出生点</b>` +
-        this.input('x', cp.pos[0], v => { cp.pos[0] = +v; }) + this.input('z', cp.pos[2], v => { cp.pos[2] = +v; }) +
-        this.input('朝向°', cp.headingDeg, v => { cp.headingDeg = +v; });
+        this.input('x', cp.pos[0], v => this.command('set-spawn', { kind: 'car', pos: [+v, cp.pos[1], cp.pos[2]] }, { type: 'spawn-car' })) +
+        this.input('z', cp.pos[2], v => this.command('set-spawn', { kind: 'car', pos: [cp.pos[0], cp.pos[1], +v] }, { type: 'spawn-car' })) +
+        this.input('朝向°', cp.headingDeg, v => this.command('set-spawn', { kind: 'car', headingDeg: +v }, { type: 'spawn-car' }));
     }
   }
 
-  /** 面板数值改动后，把选中对象的 mesh 同步到数据。 */
-  private syncSelMesh() {
-    const c = this.g.content;
-    const s = this.sel;
-    if (!s) return;
-    if (s.type === 'block') {
-      const b = c.blocks[s.index];
-      s.mesh.geometry.dispose();
-      s.mesh.geometry = new THREE.BoxGeometry(b.w, b.h, b.d);
-      s.mesh.position.set(b.x, b.h / 2, b.z);
-    } else if (s.type === 'mission') {
-      const m = c.missions[s.index];
-      s.mesh.position.set(m.pos[0], 5, m.pos[1]);
-    } else if (s.type === 'spawn-player') {
-      const sp = c.scene.spawns.player;
-      s.mesh.position.set(sp[0], 1.75, sp[2]);
-    } else {
-      const cp = c.scene.spawns.car;
-      s.mesh.position.set(cp.pos[0], 0.6, cp.pos[2]);
-      s.mesh.rotation.y = (cp.headingDeg * Math.PI) / 180;
-    }
-  }
-
-  // ---------- 增删 ----------
+  // ---------- add/remove ----------
   private addBlock() {
-    const c = this.g.content;
-    const b = { x: 0, z: 0, w: 8, d: 8, h: 8 };
-    c.blocks.push(b);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), this.g.assets['matWall']);
-    mesh.position.set(b.x, b.h / 2, b.z); mesh.castShadow = true; mesh.receiveShadow = true;
-    mesh.userData = { type: 'block', index: c.blocks.length - 1 };
-    this.g.scene.add(mesh);
-    this.g.blockMeshes.push(mesh);
-    this.select({ type: 'block', index: c.blocks.length - 1, mesh });
+    const before = this.g.content.blocks.length;
+    if (this.command('add-block', { block: { x: 0, z: 0, w: 8, d: 8, h: 8 } }, { type: 'block', index: before })) {
+      this.selectByRef({ type: 'block', index: before });
+    }
   }
 
   private addMission() {
-    const c = this.g.content;
-    c.missions.push({ text: '新任务：到达光柱', pos: [0, 13] });
-    const i = c.missions.length - 1;
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.2, 1.2, 10, 16),
-      new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.75 }),
-    );
-    mesh.position.set(0, 5, 13);
-    mesh.userData = { type: 'mission', index: i };
-    this.gizmos.add(mesh);
-    this.missionMeshes.push(mesh);
-    this.select({ type: 'mission', index: i, mesh });
+    const before = this.g.content.missions.length;
+    if (this.command('add-mission', { mission: { text: '新任务：到达光柱', pos: [0, 13] } }, { type: 'mission', index: before })) {
+      this.selectByRef({ type: 'mission', index: before });
+    }
   }
 
   private deleteSelected() {
-    const c = this.g.content;
     const s = this.sel;
     if (!s) return;
-    if (s.type === 'block') {
-      c.blocks.splice(s.index, 1);
-      this.g.scene.remove(s.mesh);
-      this.g.blockMeshes.splice(s.index, 1);
-      this.g.blockMeshes.forEach((m: THREE.Mesh, i: number) => { m.userData.index = i; });
-    } else if (s.type === 'mission') {
-      c.missions.splice(s.index, 1);
-      this.gizmos.remove(s.mesh);
-      this.missionMeshes.splice(this.missionMeshes.indexOf(s.mesh), 1);
-      // 重排剩余任务 gizmo 的 index（跳过无 pos 任务）
-      let k = 0;
-      c.missions.forEach((m: any, i: number) => { if (m.pos) { const mm = this.missionMeshes[k++]; if (mm) mm.userData.index = i; } });
-    } else { return; }  // 出生点不可删
-    this.select(null);
+    if (s.type === 'block') this.command('remove-block', { index: s.index }, null);
+    else if (s.type === 'mission') this.command('remove-mission', { index: s.index }, null);
   }
 
-  // ---------- 校验与保存 ----------
-  private contentForValidate() {
-    const c = this.g.content;
-    return { scene: c.scene, missions: c.missions, blocks: c.blocks };
-  }
-
-  private validate(): boolean {
-    const issues = validateContent(this.contentForValidate());
+  // ---------- validate / save ----------
+  private renderIssues(issues: any[]) {
     this.issuesEl.innerHTML = issues.length
       ? issues.map((i: any) => `<div class="bad">⛔ [${i.where}] ${i.message}</div>`).join('')
       : '<div class="good">✅ 校验通过</div>';
+  }
+
+  private validate(): boolean {
+    const issues = validateAll(this.g.content);
+    this.renderIssues(issues);
     return issues.length === 0;
   }
 
   private async save() {
-    if (!this.validate()) return;   // 与游戏/CLI 同一份规则；不合法不落盘
+    if (!this.validate()) return;
     const c = this.g.content;
     const round = (v: number) => Math.round(v * 10) / 10;
     const scene = {

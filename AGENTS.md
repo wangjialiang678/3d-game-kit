@@ -30,6 +30,7 @@ npm run gta            # → http://127.0.0.1:5177/
 | 新建一个游戏 | 复制一个 demo 目录，改 `package.json` name + vite 端口，根 scripts 加命令 |
 | 改玩法规则（被捕后果/条件提示等） | `content/rules.json`（ECA 数据；动作词汇表见 `content-lib/rules.mjs`，禁止裸坐标，只许命名点位） |
 | 快速验证逻辑改动（不渲染） | `node tools/simulate.mjs`（L1 抽象模拟，毫秒级；先跑这个再考虑 playtest） |
+| 验证 gta 真实系统逻辑（不渲染） | 根目录 `npm run sim:full`（L1b 全系统无头仿真，真实 EntityManager + Rapier + 系统组件打穿任务链） |
 | 验证 gta 改动没打坏游戏 | 根目录 `npm run playtest`（机器人真实输入打穿全部任务，失败非零退出+黑匣子遥测） |
 | 人工可视化编辑关卡 | gta 游戏中按 **E**（编辑器与 CLI/游戏共用校验，保存写回同一份 JSON） |
 
@@ -45,7 +46,7 @@ npm run gta            # → http://127.0.0.1:5177/
 9. **"放置玩家"必须走安全落点**：下车/出生/传送都要 ①射线确认落点没被碰撞体占据 ②高度给到胶囊站立中心（不是 0），参照 `Car.exit()` 与 `OnFootPlayer.activate()`。曾有真实 bug：下车落点插进地面/建筑，角色被物理卡死。
 10. **改完 gta 内容/玩法必跑 `npm run playtest`** —— 机器人打不穿的关卡就是坏关卡。
 11. **空间坐标一律不许硬编码在逻辑代码里**，必须来自内容包并被校验（真实 bug：被捕释放点硬编码 (0,0)，玩家用编辑器在广场盖楼后被传送进楼里卡死——校验器保护不了它不知道的坐标）。运行时传送再过一道 `findClearSpot` 自愈。
-12. **验证按金字塔从便宜到贵**：改数据→`content.mjs validate`（L0）；改逻辑→`simulate.mjs`（L1）；只有涉及操作手感/视觉才跑 `playtest`（L2）。逻辑 bug 不需要截图。
+12. **验证按金字塔从便宜到贵**：改数据→`content.mjs validate`（L0）；改规则逻辑→`simulate.mjs`（L1a）；改真实系统链路→`npm run sim:full`（L1b）；只有涉及操作手感/视觉才跑 `playtest`（L2）。逻辑 bug 不需要截图。
 13. **新玩法优先写成规则**（rules.json + 需要时给词汇表注册新动作并写好 validate/simulate/真实执行器三件套），代码组件只留给连续实时逻辑（控制器/相机/物理手感）。
 14. **玩家反馈用飞行记录仪**：游戏常驻黑匣子（2min 状态环+事件流），卡死/穿模看门狗自动报警，玩家按 **F9** 下载诊断包 JSON 发给老师/AI（`window.__flight.dump()` 亦可）。
 15. **每个目标必须有全屏可见引导**（50m 高光柱 + HUD 方向箭头/距离）。"玩家找不到该去哪"按 bug 对待，不是玩家的错。

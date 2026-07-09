@@ -10,6 +10,7 @@
   "scripts": {
     "military": "npm run dev -w @demo/military-tps",
     "gta": "npm run dev -w @demo/gta-sandbox",
+    "sim:full": "node demos/gta-sandbox/tools/headless-sim.mjs",
     "playtest": "node demos/gta-sandbox/tools/playtest.mjs",
     "playtest:military": "node demos/military-tps/tools/playtest.mjs"
   }

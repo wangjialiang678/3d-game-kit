@@ -7,6 +7,7 @@ import PoliceNPC from '../entities/PoliceNPC';
 import { buildCar, cloneSoldier } from '../util/build';
 import type { Content, TuningContent } from '../content/ContentLoader';
 import type { PrefabDefinition } from '../../content-lib/core';
+import type { SoldierInstance } from '../util/build';
 
 export interface PrefabDeps {
   camera: THREE.PerspectiveCamera;
@@ -15,6 +16,8 @@ export interface PrefabDeps {
   content: Content;
   tuning: TuningContent;
   assets: Record<string, any>;
+  makeSoldier?: (asset: any, tint?: THREE.ColorRepresentation) => SoldierInstance;
+  makeCar?: (color?: THREE.ColorRepresentation) => THREE.Group;
 }
 
 export type PrefabParams = PrefabDefinition & {
@@ -58,7 +61,7 @@ export default class PrefabRegistry {
         deps.camera,
         deps.physics,
         deps.scene,
-        cloneSoldier(deps.assets[params.model ?? 'soldier']),
+        (deps.makeSoldier ?? cloneSoldier)(deps.assets[params.model ?? 'soldier'], params.tint),
         deps.tuning.player,
       ));
 
@@ -67,7 +70,7 @@ export default class PrefabRegistry {
         deps.camera,
         deps.physics,
         deps.scene,
-        buildCar(params.color ?? '#2f6fb0'),
+        (deps.makeCar ?? buildCar)(params.color ?? '#2f6fb0'),
         params.position,
         ((params.headingDeg ?? 180) * Math.PI) / 180,
         deps.tuning.car,
@@ -75,7 +78,7 @@ export default class PrefabRegistry {
 
     this.register('PoliceNPC', (deps, params) =>
       new PoliceNPC(
-        cloneSoldier(deps.assets[params.model ?? 'soldier'], params.tint ?? '#2a4bd7'),
+        (deps.makeSoldier ?? cloneSoldier)(deps.assets[params.model ?? 'soldier'], params.tint ?? '#2a4bd7'),
         deps.scene,
         deps.tuning.police.speed,
       ));
