@@ -79,6 +79,7 @@ WASD 移动/驾驶 · 鼠标看向 · **F 上/下车** · **G 惹麻烦（涨通
 
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — 框架原理（三层分离、ECS、消息总线）、能做成哪些游戏、能做/不能做的边界（含开放世界与 GTA 类玩法的可行性分析、分块流式加载方案）、定制配方。
 - **[AGENTS.md](./AGENTS.md)** — AI 编码代理操作手册：项目地图、想改什么→改哪里、约定、验证方式。
+- **[ARCHITECTURE-REVIEW.md](./ARCHITECTURE-REVIEW.md)** — 架构评审：七个架构真相、目标分层、代码vs数据判定表、R1-R7 路线图与不做清单。
 
 ## 新建你自己的 demo
 
