@@ -121,8 +121,12 @@ class Game {
     const bar = document.getElementById('progress')!;
     const jobs: Promise<void>[] = [];
     const add = (p: Promise<any>, n: string) => jobs.push(p.then(r => { this.assets[n] = r; }));
-    add(gltf.loadAsync(this.content.scene.assets.soldier), 'soldier');   // 资产路径来自内容包
-    add(rgbe.loadAsync(this.content.scene.assets.sky), 'sky');
+    // 资产表来自内容包，按扩展名分发加载器——新增模型只改 scene.json，不碰这里
+    for (const [key, path] of Object.entries(this.content.scene.assets as Record<string, string>)) {
+      if (/\.(glb|gltf)$/i.test(path)) add(gltf.loadAsync(path), key);
+      else if (/\.hdr$/i.test(path)) add(rgbe.loadAsync(path), key);
+      else console.warn(`[assets] 不认识的资产类型，已跳过 ${key}: ${path}`);
+    }
     let done = 0; jobs.forEach(j => j.then(() => { done++; bar.style.width = `${done / jobs.length * 100}%`; }));
     await Promise.all(jobs);
     const sky = this.assets['sky'] as THREE.Texture;

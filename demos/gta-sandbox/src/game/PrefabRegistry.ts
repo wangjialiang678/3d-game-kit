@@ -4,7 +4,9 @@ import type Physics from '@engine/Physics';
 import OnFootPlayer from '../entities/OnFootPlayer';
 import Car from '../entities/Car';
 import PoliceNPC from '../entities/PoliceNPC';
-import { buildCar, cloneSoldier } from '../util/build';
+import Prop from '../entities/Prop';
+import AmbientBot from '../entities/AmbientBot';
+import { buildCar, buildCarFromGLTF, cloneSoldier } from '../util/build';
 import type { Content, TuningContent } from '../content/ContentLoader';
 import type { PrefabDefinition } from '../../content-lib/core';
 import type { SoldierInstance } from '../util/build';
@@ -65,16 +67,22 @@ export default class PrefabRegistry {
         deps.tuning.player,
       ));
 
-    this.register('Car', (deps, params) =>
-      new Car(
+    this.register('Car', (deps, params) => {
+      // model 指向 assets 表里的 GLB 时用真实模型（自动归一到车长），否则程序化盒子车
+      const gltf = params.model && params.model !== 'procedural-car' ? deps.assets[params.model] : null;
+      const model = gltf
+        ? buildCarFromGLTF(gltf, params.length ?? 4.2, params.modelYawDeg ?? 0)
+        : (deps.makeCar ?? buildCar)(params.color ?? '#2f6fb0');
+      return new Car(
         deps.camera,
         deps.physics,
         deps.scene,
-        (deps.makeCar ?? buildCar)(params.color ?? '#2f6fb0'),
+        model,
         params.position,
         ((params.headingDeg ?? 180) * Math.PI) / 180,
         deps.tuning.car,
-      ));
+      );
+    });
 
     this.register('PoliceNPC', (deps, params) =>
       new PoliceNPC(
@@ -82,5 +90,19 @@ export default class PrefabRegistry {
         deps.scene,
         deps.tuning.police.speed,
       ));
+
+    this.register('Prop', (deps, params) =>
+      new Prop(deps.assets[params.model ?? ''], deps.scene, deps.physics, {
+        scale: params.scale,
+        modelYawDeg: params.modelYawDeg,
+        collider: params.collider,
+      }));
+
+    this.register('AmbientBot', (deps, params) =>
+      new AmbientBot(deps.assets[params.model ?? ''], deps.scene, {
+        clip: params.clip,
+        scale: params.scale,
+        modelYawDeg: params.modelYawDeg,
+      }));
   }
 }

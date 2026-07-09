@@ -33,6 +33,7 @@ npm run gta            # → http://127.0.0.1:5177/
 | 验证 gta 真实系统逻辑（不渲染） | 根目录 `npm run sim:full`（L1b 全系统无头仿真，真实 EntityManager + Rapier + 系统组件打穿任务链） |
 | 验证 gta 改动没打坏游戏 | 根目录 `npm run playtest`（机器人真实输入打穿全部任务，失败非零退出+黑匣子遥测） |
 | 人工可视化编辑关卡 | gta 游戏中按 **E**（编辑器与 CLI/游戏共用校验，保存写回同一份 JSON） |
+| 换/加美术模型（角色/车/街景） | GLB 放 `public/assets/`，在 `scene.json` 的 `assets` 表登记，prefab 用 `model` 引用（校验器查引用存在）。注意 GLB 可能外链贴图（如 Kenney 的 `Textures/colormap.png`——要一起放）。动画片段名自动规范化（idle/Walking→Idle/Walk）。带碰撞的装饰物碰撞尺寸**必须**显式写 prefab `collider: [w,h,d]`（物理真相在数据里，无头仿真才能建同样的碰撞；不许从模型包围盒推） |
 
 ## 必须遵守的约定
 1. **框架/玩法分离**：品类无关的进 `packages/engine`；具体玩法只进 demo 的 `entities/`。

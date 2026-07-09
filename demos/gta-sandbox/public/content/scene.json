@@ -46,13 +46,36 @@
     },
     "car": {
       "controller": "Car",
-      "model": "procedural-car",
-      "color": "#2f6fb0"
+      "model": "truck",
+      "length": 4.2,
+      "modelYawDeg": 0
     },
     "police": {
       "controller": "PoliceNPC",
-      "model": "soldier",
-      "tint": "#2a4bd7"
+      "model": "xbot",
+      "tint": "#4a6cff"
+    },
+    "fountain": {
+      "controller": "Prop",
+      "model": "fountain",
+      "scale": 6,
+      "collider": [
+        3.6,
+        2,
+        3.6
+      ]
+    },
+    "street-tree": {
+      "controller": "Prop",
+      "model": "trees",
+      "scale": 6,
+      "collider": false
+    },
+    "dance-robot": {
+      "controller": "AmbientBot",
+      "model": "robot",
+      "clip": "Dance",
+      "scale": 0.35
     }
   },
   "entities": [
@@ -65,11 +88,56 @@
       "prefab": "car",
       "name": "Car",
       "at": "spawns.car"
+    },
+    {
+      "prefab": "fountain",
+      "name": "PlazaFountain",
+      "at": [
+        -5,
+        5
+      ]
+    },
+    {
+      "prefab": "street-tree",
+      "name": "Tree1",
+      "at": [
+        8,
+        8
+      ]
+    },
+    {
+      "prefab": "street-tree",
+      "name": "Tree2",
+      "at": [
+        -8,
+        2
+      ]
+    },
+    {
+      "prefab": "street-tree",
+      "name": "Tree3",
+      "at": [
+        7,
+        -7
+      ]
+    },
+    {
+      "prefab": "dance-robot",
+      "name": "StreetRobot",
+      "at": [
+        6,
+        6
+      ]
     }
   ],
   "assets": {
     "soldier": "/assets/characters/Soldier.glb",
-    "sky": "/assets/sky/kloofendal_48d_partly_cloudy_puresky.hdr"
+    "sky": "/assets/sky/kloofendal_48d_partly_cloudy_puresky.hdr",
+    "xbot": "/assets/characters/Xbot.glb",
+    "robot": "/assets/characters/RobotExpressive.glb",
+    "truck": "/assets/vehicles/vehicle-truck-red.glb",
+    "fountain": "/assets/props/pavement-fountain.glb",
+    "trees": "/assets/props/grass-trees-tall.glb"
   },
   "blocks": [
     {

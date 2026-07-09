@@ -29,7 +29,7 @@ export function materializeBlocks(t) {
 }
 
 // Keep in sync with demos/gta-sandbox/src/game/PrefabRegistry.ts built-in registrations.
-export const PREFAB_CONTROLLER_TYPES = ['OnFootPlayer', 'Car', 'PoliceNPC'];
+export const PREFAB_CONTROLLER_TYPES = ['OnFootPlayer', 'Car', 'PoliceNPC', 'Prop', 'AmbientBot'];
 
 /** 解析实体实例 at 字段：只允许 spawns.* 命名点位或 [x,z] 内容坐标。 */
 export function resolveEntityPoint(scene, at) {
@@ -148,6 +148,10 @@ function validatePrefabs(c, issues, inBounds) {
     }
     if (!PREFAB_CONTROLLER_TYPES.includes(prefab.controller)) {
       issues.push({ where, message: `未知 controller "${prefab.controller}"（可用：${PREFAB_CONTROLLER_TYPES.join('/')})` });
+    }
+    // model 引用必须能在资产表里找到（'procedural-car' 是程序化模型，无需资产）
+    if (prefab.model && prefab.model !== 'procedural-car' && !scene.assets?.[prefab.model]) {
+      issues.push({ where: `scene.prefabs.${name}.model`, message: `模型 "${prefab.model}" 未在 scene.assets 里登记` });
     }
   }
 

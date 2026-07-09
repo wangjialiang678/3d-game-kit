@@ -10,7 +10,7 @@ export interface TownParams {
 }
 export interface Block { x: number; z: number; w: number; d: number; h: number; }
 export interface Issue { where: string; message: string; }
-export type PrefabControllerType = 'OnFootPlayer' | 'Car' | 'PoliceNPC';
+export type PrefabControllerType = 'OnFootPlayer' | 'Car' | 'PoliceNPC' | 'Prop' | 'AmbientBot';
 export interface PrefabDefinition {
   controller: PrefabControllerType;
   model?: string;
