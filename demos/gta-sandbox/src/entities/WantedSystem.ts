@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Component, Input, Entity } from '@engine';
 import PoliceNPC from './PoliceNPC';
 import { cloneSoldier } from '../util/build';
-import { findClearSpot } from '../../content-lib/core.mjs';
+import { Bus } from '../events';
 import type { Content } from '../content/ContentLoader';
 
 const MAX_STARS = 5;
@@ -51,7 +51,7 @@ export default class WantedSystem extends Component {
 
   raise(reason: string) {
     if (this.level < MAX_STARS) this.level++;
-    (window as any).__flight?.event('wanted-raise', { level: this.level });
+    Bus.emit('wanted-raise', { level: this.level });
     this.toast(`⭐ 通缉 ${this.level} 星 — ${reason}`);
     this.renderStars();
     this.syncPolice();
@@ -102,19 +102,14 @@ export default class WantedSystem extends Component {
   }
 
   private bust() {
+    // 系统职责只剩"通缉机制本身"：清星、撤警力。
+    // 被捕的"后果"（传送到哪、提示什么）已迁入 ECA 规则层（content/rules.json）——
+    // 曾有真实 bug：传送点硬编码 (0,0)，玩家在广场盖楼后被传送进楼里卡死；
+    // 规则层的 teleport_player 只接受命名点位 + L0 校验 + 运行时安全落点，写不出那种 bug。
     this.level = 0;
     this.renderStars();
     this.syncPolice();
-    this.toast('🚨 BUSTED！被捕 — 罚款后释放');
-    // 释放点 = 内容包里的玩家出生点（受校验器保护，不再硬编码坐标——
-    // 曾有真实 bug：硬编码 (0,0)，玩家用编辑器在广场盖了楼，被捕后被传送进楼里卡死）。
-    // 再过一道 findClearSpot 运行时自愈：即使数据坏了也把人放到最近空地。
-    const sp = this.content.scene.spawns.player;
-    const [x, z] = findClearSpot(this.content.blocks, sp[0], sp[2], 1.0);
-    if (x !== sp[0] || z !== sp[2]) console.warn(`[wanted] 出生点被占用，自愈到最近空地 (${x.toFixed(1)},${z.toFixed(1)})`);
-    (window as any).__flight?.event('bust', { respawn: [x, z] });
-    const of = this.FindEntity('Player')!.GetComponent('OnFootPlayer');
-    of.activate(new THREE.Vector3(x, sp[1], z));
+    Bus.emit('busted', {});
   }
 
   Update(t: number): void {
@@ -152,7 +147,7 @@ export default class WantedSystem extends Component {
         this.level--;
         this.renderStars();
         this.syncPolice(false);   // 降星只裁减，绝不在玩家身边补刷警察
-        (window as any).__flight?.event('wanted-drop', { level: this.level });
+        Bus.emit('wanted-drop', { level: this.level });
         this.toast(this.level === 0 ? '✅ 甩掉警察了！通缉解除' : `通缉降为 ${this.level} 星`);
       }
     } else {

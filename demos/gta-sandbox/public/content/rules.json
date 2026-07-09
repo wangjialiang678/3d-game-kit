@@ -1,0 +1,33 @@
+{
+  "_comment": "ECA 规则层（事件-条件-动作）：高频玩法逻辑用受限词汇描述，不写代码。动作词汇表是封闭的（见 content-lib/rules.mjs），每个动作自带校验：teleport_player 只接受内容包里的命名点位，写不出'传送进楼里'这种 bug。",
+  "version": 1,
+  "rules": [
+    {
+      "_comment": "被捕流程：传送回出生点（命名点位，受校验器+安全落点双重保护）+ 提示",
+      "on": "busted",
+      "do": [
+        {
+          "action": "teleport_player",
+          "to": "spawns.player"
+        },
+        {
+          "action": "toast",
+          "text": "🚨 BUSTED！被捕 — 罚款后在出生点释放"
+        }
+      ]
+    },
+    {
+      "_comment": "条件示例：通缉升到 3 星以上时警告玩家",
+      "on": "wanted-raise",
+      "if": {
+        "minLevel": 3
+      },
+      "do": [
+        {
+          "action": "toast",
+          "text": "🚁 警力全面升级！赶紧上车跑路"
+        }
+      ]
+    }
+  ]
+}

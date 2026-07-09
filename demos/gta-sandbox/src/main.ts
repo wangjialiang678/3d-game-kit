@@ -14,6 +14,8 @@ import MissionSystem from './entities/MissionSystem';
 import { cloneSoldier, buildCar } from './util/build';
 import { loadContent, type Content } from './content/ContentLoader';
 import { validateContent } from '../content-lib/core.mjs';
+import { validateRules } from '../content-lib/rules.mjs';
+import RuleSystem from './entities/RuleSystem';
 import type { Issue } from '../content-lib/core';
 
 class Game {
@@ -35,12 +37,15 @@ class Game {
 
     // ---- P1：加载内容包并校验（校验不过就不开局，红字报错） ----
     try {
-      this.content = await loadContent('/content/scene.json', '/content/missions.json');
+      this.content = await loadContent('/content/scene.json', '/content/missions.json', '/content/rules.json');
     } catch (e) {
       this.showContentErrors([{ where: 'content', message: String(e) }]);
       return;
     }
-    const issues = validateContent(this.content);
+    const issues = [
+      ...validateContent(this.content),
+      ...validateRules(this.content.rules, this.content),   // L0：规则包也一样先校验再开局
+    ];
     if (issues.length) { this.showContentErrors(issues); return; }
 
     await this.loadAssets();
@@ -159,6 +164,11 @@ class Game {
     const wanted = new Entity(); wanted.SetName('Wanted');
     wanted.AddComponent(new WantedSystem(this.scene, this.assets['soldier'], this.content));
     this.em.Add(wanted);
+
+    // ECA 规则系统（数据驱动的玩法逻辑：被捕流程等）
+    const rulesEnt = new Entity(); rulesEnt.SetName('Rules');
+    rulesEnt.AddComponent(new RuleSystem(this.content.rules, this.content));
+    this.em.Add(rulesEnt);
 
     // mission chain (walk → drive → wanted-and-escape)
     const missions = new Entity(); missions.SetName('Missions');

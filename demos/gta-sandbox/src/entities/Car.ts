@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { Component, Input } from '@engine';
 import type Physics from '@engine/Physics';
 import type OnFootPlayer from './OnFootPlayer';
+import { Bus } from '../events';
 
 const HALF = new THREE.Vector3(0.95, 0.6, 2.0);
 const BODY_Y = 0.7;
@@ -57,7 +58,7 @@ export default class Car extends Component {
     });
   }
 
-  enterAsDriver(onfoot: OnFootPlayer) { this.onfoot = onfoot; this.active = true; this.enteredAt = performance.now(); (window as any).__flight?.event('enter-car'); }
+  enterAsDriver(onfoot: OnFootPlayer) { this.onfoot = onfoot; this.active = true; this.enteredAt = performance.now(); Bus.emit('enter-car'); }
 
   private exit() {
     this.active = false;
@@ -77,7 +78,7 @@ export default class Car extends Component {
       if (!hit) { exitPos = new THREE.Vector3(this.ground.x + off.x, 0, this.ground.z + off.z); break; }
     }
     if (!exitPos) exitPos = new THREE.Vector3(this.ground.x, 0, this.ground.z); // 全堵死就原地（车顶）
-    (window as any).__flight?.event('exit-car', { at: [+exitPos.x.toFixed(1), +exitPos.z.toFixed(1)] });
+    Bus.emit('exit-car', { at: [+exitPos.x.toFixed(1), +exitPos.z.toFixed(1)] });
     this.onfoot?.activate(exitPos);
   }
 

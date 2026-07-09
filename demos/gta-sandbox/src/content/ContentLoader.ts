@@ -32,15 +32,19 @@ export interface Content {
   missions: MissionData[];
   /** 由 town 参数物化出的建筑列表（单一事实来源，校验/编辑器都用它） */
   blocks: Block[];
+  /** ECA 规则包（事件-条件-动作，封闭动作词汇表） */
+  rules: { version: number; rules: any[] };
 }
 
-export async function loadContent(sceneUrl: string, missionsUrl: string): Promise<Content> {
-  const [sceneRes, missionsRes] = await Promise.all([fetch(sceneUrl), fetch(missionsUrl)]);
+export async function loadContent(sceneUrl: string, missionsUrl: string, rulesUrl: string): Promise<Content> {
+  const [sceneRes, missionsRes, rulesRes] = await Promise.all([fetch(sceneUrl), fetch(missionsUrl), fetch(rulesUrl)]);
   if (!sceneRes.ok) throw new Error(`无法加载 ${sceneUrl}: HTTP ${sceneRes.status}`);
   if (!missionsRes.ok) throw new Error(`无法加载 ${missionsUrl}: HTTP ${missionsRes.status}`);
+  if (!rulesRes.ok) throw new Error(`无法加载 ${rulesUrl}: HTTP ${rulesRes.status}`);
   const scene = (await sceneRes.json()) as SceneContent;
   const missionsPack = (await missionsRes.json()) as { missions: MissionData[] };
+  const rules = await rulesRes.json();
   // 显式 blocks 优先（编辑器产物）；否则由 town 种子物化
   const blocks = scene.blocks?.length ? scene.blocks : materializeBlocks(scene.town);
-  return { scene, missions: missionsPack.missions ?? [], blocks };
+  return { scene, missions: missionsPack.missions ?? [], blocks, rules };
 }
